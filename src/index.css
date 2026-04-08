@@ -1,0 +1,498 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;400;700;900&family=Istok+Web:wght@400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-istok: "Istok Web", sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: #232323;
+  color: white;
+  font-family: "Inter", sans-serif;
+  overflow-x: hidden;
+}
+
+/* Consolidated App Styles */
+.app-container {
+  background-color: #232323;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  position: relative;
+  overflow-y: auto;
+  padding-bottom: 120px; /* Space for fixed nav */
+}
+
+/* Header */
+.header-frame {
+  align-items: flex-start;
+  background-color: #060000;
+  display: flex;
+  gap: 10px;
+  height: 85px;
+  padding: 25px 37px;
+  position: sticky;
+  top: 0;
+  width: 100%;
+  z-index: 40;
+}
+
+.title-text {
+  color: #ffffff;
+  font-family: "Istok Web", sans-serif;
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: -0.30px;
+  line-height: normal;
+}
+
+/* FAB */
+.fab-button {
+  align-items: center;
+  background-color: #060000;
+  border: 1px solid #ffffff;
+  border-radius: 344.83px;
+  display: flex;
+  height: 100px;
+  justify-content: center;
+  position: fixed;
+  bottom: 140px;
+  right: 48px;
+  width: 107.69px;
+  cursor: pointer;
+  z-index: 50;
+  transition: transform 0.2s;
+}
+
+.fab-button:hover {
+  transform: scale(1.05);
+}
+
+.fab-icon {
+  height: 72.4px;
+  width: 72.4px;
+}
+
+/* Bottom Navigation */
+.bottom-nav {
+  align-items: center;
+  background-color: #060000;
+  display: flex;
+  gap: 10px;
+  height: 114px;
+  justify-content: space-around;
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 1280px;
+  z-index: 60;
+}
+
+.nav-item {
+  align-items: center;
+  background-color: #060000;
+  border-radius: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  height: 94px;
+  justify-content: center;
+  padding: 10px;
+  width: 172px;
+  cursor: pointer;
+  border: none;
+}
+
+.nav-icon {
+  height: 45px;
+  width: 48px;
+}
+
+.nav-text {
+  color: #fcfaf4;
+  font-family: "Inter", sans-serif;
+  font-size: 15px;
+  font-weight: 200;
+  white-space: nowrap;
+}
+
+.nav-item.active .nav-text {
+  color: #fce00b;
+  font-weight: 100;
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background-color: #060606;
+  border-radius: 21.94px;
+  height: 220px;
+  width: 427px;
+  position: relative;
+  padding: 20px;
+}
+
+.modal-title {
+  color: #ffffff;
+  font-family: "Istok Web", sans-serif;
+  font-size: 25px;
+  font-weight: 400;
+  margin-bottom: 15px;
+}
+
+.input-wrapper {
+  background-color: #6e6e6a;
+  border-radius: 25px;
+  height: 49px;
+  width: 100%;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.subject-input {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-family: "Istok Web", sans-serif;
+  font-size: 25px;
+  width: 100%;
+  outline: none;
+}
+
+.color-selection {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.color-circle {
+  height: 38px;
+  width: 38px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.color-circle.selected {
+  border-color: #ffffff;
+}
+
+.create-button {
+  background-color: #ffffff;
+  border-radius: 19.48px;
+  height: 32px;
+  width: 80px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.create-button-text {
+  color: #000000;
+  font-family: "Istok Web", sans-serif;
+  font-size: 19.5px;
+  font-weight: 400;
+}
+
+/* Subject Bars (Materias) */
+.subject-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 20px 37px;
+  width: 100%;
+}
+
+.subject-bar {
+  border-radius: 24.8px 27.66px 24.8px 24.8px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  height: 62px;
+  padding: 0 25px;
+  width: 100%;
+  transition: transform 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Fade to black effect for Materias */
+.subject-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(to right, transparent, #232323);
+  pointer-events: none;
+}
+
+.subject-bar:hover {
+  transform: translateX(5px);
+}
+
+.subject-icon {
+  height: 30.88px;
+  width: 21.86px;
+  z-index: 1;
+  margin-left: 3px;
+  margin-top: -3px;
+  margin-right: -2px;
+  margin-bottom: 1px;
+}
+
+.subject-name {
+  color: #ffffff;
+  font-family: "Istok Web", sans-serif;
+  font-size: 21.4px;
+  font-weight: 400;
+  z-index: 1;
+  margin-left: -14px;
+  margin-top: 4px;
+}
+
+/* Recientes Grid */
+.recientes-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 241px);
+  gap: 6px;
+  padding: 23px 30px;
+  width: fit-content;
+  margin: 0 auto;
+}
+
+.recientes-card {
+  width: 241px;
+  height: 233px;
+  border-radius: 26px 29px 26px 26px;
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  overflow: hidden;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+}
+
+.recientes-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+}
+
+.card-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-start;
+}
+
+.card-diamond {
+  height: 32.38px;
+  width: 22.92px;
+  fill: white;
+  flex-shrink: 0;
+  margin-bottom: -12px;
+  margin-right: 6px;
+  margin-left: 7px;
+  margin-top: 16px;
+}
+
+.card-title {
+  color: white;
+  font-family: "Inter", sans-serif;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  text-transform: uppercase;
+  padding-right: 14px;
+  margin-left: -3px;
+  margin-right: -3px;
+  margin-top: 25px;
+}
+
+/* Individual Subject View Styles */
+.subject-detail-container {
+  background-color: #232323;
+  min-height: 100vh;
+  width: 100%;
+  position: relative;
+  padding-bottom: 120px;
+}
+
+.subject-header {
+  background-color: #060000;
+  height: 85px;
+  display: flex;
+  align-items: center;
+  padding: 0 37px;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.subject-title {
+  color: #ffffff;
+  font-family: "Istok Web", sans-serif;
+  font-size: 30px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.30px;
+}
+
+/* Note Grid */
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 241px);
+  gap: 6px;
+  padding: 23px 30px;
+  width: fit-content;
+  margin: 0 auto;
+}
+
+.note-card {
+  width: 241px;
+  height: 233px;
+  border-radius: 26px 29px 26px 26px;
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.2s;
+  overflow: hidden;
+}
+
+.note-card:hover {
+  transform: scale(1.02);
+}
+
+.note-icon {
+  height: 32.38px;
+  width: 22.92px;
+  flex-shrink: 0;
+  margin-bottom: -12px;
+  margin-right: 6px;
+  margin-left: 7px;
+  margin-top: 16px;
+}
+
+.note-title {
+  color: #ffffff;
+  font-family: "Inter", sans-serif;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-left: -3px;
+  margin-right: -3px;
+  margin-top: 25px;
+}
+
+/* Note Creation Modal */
+.note-modal-content {
+  background-color: #060606;
+  border-radius: 21.94px;
+  width: 427px;
+  height: 189px;
+  padding: 15px 24px 25px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+
+.note-modal-title {
+  color: #ffffff;
+  font-family: "Istok Web", sans-serif;
+  font-size: 25px;
+  font-weight: 400;
+  height: 38px;
+}
+
+.note-input-wrapper {
+  background-color: #6e6e6a;
+  border-radius: 25px;
+  height: 52px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+}
+
+.note-input {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-family: "Istok Web", sans-serif;
+  font-size: 25px;
+  width: 100%;
+  outline: none;
+}
+
+.note-create-button {
+  background-color: #ffffff;
+  border-radius: 19.48px;
+  height: 43px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  margin-top: 5px;
+}
+
+.note-create-text {
+  color: #000000;
+  font-family: "Istok Web", sans-serif;
+  font-size: 19.5px;
+  font-weight: 400;
+}
+
+/* Back button */
+.back-button {
+  position: absolute;
+  left: 10px;
+  top: 25px;
+  color: white;
+  cursor: pointer;
+  z-index: 50;
+  opacity: 0.6;
+}
+
+.back-button:hover {
+  opacity: 1;
+}
+
+.subject-icon path,
+.card-diamond path,
+.note-icon path {
+  margin-top: 0px;
+  margin-left: -2px;
+  margin-bottom: -6px;
+}

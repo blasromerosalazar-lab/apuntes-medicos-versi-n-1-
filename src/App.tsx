@@ -90,6 +90,10 @@ export default function App() {
     }))
   ).sort((a, b) => Number(b.id) - Number(a.id));
 
+  const isBioquimica = (name: string) => {
+    return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() === 'BIOQUIMICA';
+  };
+
   if (selectedSubjectId && selectedSubject) {
     return (
       <div className="subject-detail-container">
@@ -107,8 +111,8 @@ export default function App() {
                 key={note.id}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="note-card"
-                style={{ background: selectedSubject.gradient }}
+                className={`note-card ${isBioquimica(selectedSubject.name) ? 'lava-lamp-cyan' : ''}`}
+                style={isBioquimica(selectedSubject.name) ? {} : { background: selectedSubject.gradient }}
               >
                 <div className="card-content">
                   <Diamond className="note-icon fill-white text-white" />
@@ -123,7 +127,7 @@ export default function App() {
           className="fab-button" 
           onClick={() => setIsNoteModalOpen(true)}
         >
-          <BookPlus className="fab-icon text-white" />
+          <BookPlus className="fab-icon text-white" strokeWidth={1.5} />
         </button>
 
         <AnimatePresence>
@@ -159,16 +163,63 @@ export default function App() {
 
         <nav className="bottom-nav">
           <button className="nav-item" onClick={() => { setSelectedSubjectId(null); setActiveTab('recientes'); }}>
-            <Clock className="nav-icon text-white" />
-            <span className="nav-text">Recientes</span>
+            <div className="relative flex flex-col items-center justify-center">
+              {/* Base Layer (White) */}
+              <div className="flex flex-col items-center justify-center text-white">
+                <Clock className="nav-icon" />
+                <span className="nav-text">Recientes</span>
+              </div>
+              {/* Active Layer (Yellow Sweep) */}
+              <motion.div 
+                className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+                initial={false}
+                animate={{ 
+                  clipPath: activeTab === 'recientes' ? 'inset(0 0% 0 0)' : 'inset(0 100% 0 0)' 
+                }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+              >
+                <Clock className="nav-icon" />
+                <span className="nav-text">Recientes</span>
+              </motion.div>
+            </div>
           </button>
-          <button className="nav-item active" onClick={() => setSelectedSubjectId(null)}>
-            <BookOpen className="nav-icon text-[#fce00b]" />
-            <span className="nav-text">Materias</span>
+          <button className="nav-item" onClick={() => setSelectedSubjectId(null)}>
+            <div className="relative flex flex-col items-center justify-center">
+              <div className="flex flex-col items-center justify-center text-white">
+                <BookOpen className="nav-icon" />
+                <span className="nav-text">Materias</span>
+              </div>
+              <motion.div 
+                className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+                initial={false}
+                animate={{ 
+                  clipPath: 'inset(0 0% 0 0)' 
+                }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+              >
+                <BookOpen className="nav-icon" />
+                <span className="nav-text">Materias</span>
+              </motion.div>
+            </div>
           </button>
           <button className="nav-item" onClick={() => { setSelectedSubjectId(null); setActiveTab('3d'); }}>
-            <Box className="nav-icon text-white" />
-            <span className="nav-text">3D/Animaciones</span>
+            <div className="relative flex flex-col items-center justify-center">
+              <div className="flex flex-col items-center justify-center text-white">
+                <Box className="nav-icon" />
+                <span className="nav-text">3D/Animaciones</span>
+              </div>
+              <motion.div 
+                className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+                initial={false}
+                animate={{ 
+                  clipPath: activeTab === '3d' ? 'inset(0 0% 0 0)' : 'inset(0 100% 0 0)' 
+                }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+              >
+                <Box className="nav-icon" />
+                <span className="nav-text">3D/Animaciones</span>
+              </motion.div>
+            </div>
           </button>
         </nav>
       </div>
@@ -194,8 +245,8 @@ export default function App() {
                   key={subject.id}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="subject-bar"
-                  style={{ background: subject.gradient }}
+                  className={`subject-bar ${isBioquimica(subject.name) ? 'lava-lamp-cyan' : ''}`}
+                  style={isBioquimica(subject.name) ? {} : { background: subject.gradient }}
                   onClick={() => setSelectedSubjectId(subject.id)}
                 >
                   <Diamond className="subject-icon fill-white text-white" />
@@ -214,8 +265,8 @@ export default function App() {
                   key={note.id}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="recientes-card"
-                  style={{ background: note.gradient.replace('90deg', '180deg') }}
+                  className={`recientes-card ${isBioquimica(note.subjectName) ? 'lava-lamp-cyan' : ''}`}
+                  style={isBioquimica(note.subjectName) ? {} : { background: note.gradient.replace('90deg', '180deg') }}
                   onClick={() => setSelectedSubjectId(note.subjectId)}
                 >
                   <div className="card-content">
@@ -242,7 +293,7 @@ export default function App() {
           onClick={() => setIsModalOpen(true)}
           aria-label="Añadir materia"
         >
-          <BookPlus className="fab-icon text-white" />
+          <BookPlus className="fab-icon text-white" strokeWidth={1.5} />
         </button>
       )}
 
@@ -297,22 +348,69 @@ export default function App() {
           className={`nav-item ${activeTab === 'recientes' ? 'active' : ''}`}
           onClick={() => setActiveTab('recientes')}
         >
-          <Clock className={`nav-icon ${activeTab === 'recientes' ? 'text-[#fce00b]' : 'text-white'}`} />
-          <span className="nav-text">Recientes</span>
+          <div className="relative flex flex-col items-center justify-center">
+            {/* Base Layer (White) */}
+            <div className="flex flex-col items-center justify-center text-white">
+              <Clock className="nav-icon" />
+              <span className="nav-text">Recientes</span>
+            </div>
+            {/* Active Layer (Yellow Sweep) */}
+            <motion.div 
+              className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+              initial={false}
+              animate={{ 
+                clipPath: activeTab === 'recientes' ? 'inset(0 0% 0 0)' : 'inset(0 100% 0 0)' 
+              }}
+              transition={{ duration: 0.5, ease: "easeInOut" }}
+            >
+              <Clock className="nav-icon" />
+              <span className="nav-text">Recientes</span>
+            </motion.div>
+          </div>
         </button>
         <button 
           className={`nav-item ${activeTab === 'materias' ? 'active' : ''}`}
           onClick={() => setActiveTab('materias')}
         >
-          <BookOpen className={`nav-icon ${activeTab === 'materias' ? 'text-[#fce00b]' : 'text-white'}`} />
-          <span className="nav-text">Materias</span>
+          <div className="relative flex flex-col items-center justify-center">
+            <div className="flex flex-col items-center justify-center text-white">
+              <BookOpen className="nav-icon" />
+              <span className="nav-text">Materias</span>
+            </div>
+            <motion.div 
+              className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+              initial={false}
+              animate={{ 
+                clipPath: activeTab === 'materias' ? 'inset(0 0% 0 0)' : 'inset(0 100% 0 0)' 
+              }}
+              transition={{ duration: 0.5, ease: "easeInOut" }}
+            >
+              <BookOpen className="nav-icon" />
+              <span className="nav-text">Materias</span>
+            </motion.div>
+          </div>
         </button>
         <button 
           className={`nav-item ${activeTab === '3d' ? 'active' : ''}`}
           onClick={() => setActiveTab('3d')}
         >
-          <Box className={`nav-icon ${activeTab === '3d' ? 'text-[#fce00b]' : 'text-white'}`} />
-          <span className="nav-text">3D/Animaciones</span>
+          <div className="relative flex flex-col items-center justify-center">
+            <div className="flex flex-col items-center justify-center text-white">
+              <Box className="nav-icon" />
+              <span className="nav-text">3D/Animaciones</span>
+            </div>
+            <motion.div 
+              className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+              initial={false}
+              animate={{ 
+                clipPath: activeTab === '3d' ? 'inset(0 0% 0 0)' : 'inset(0 100% 0 0)' 
+              }}
+              transition={{ duration: 0.5, ease: "easeInOut" }}
+            >
+              <Box className="nav-icon" />
+              <span className="nav-text">3D/Animaciones</span>
+            </motion.div>
+          </div>
         </button>
       </nav>
     </div>

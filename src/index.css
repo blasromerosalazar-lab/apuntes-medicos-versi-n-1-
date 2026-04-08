@@ -474,59 +474,184 @@ body {
   font-weight: 400;
 }
 
-/* Back button */
-.back-button {
+/* Lienzo de Apuntes Styles - High Fidelity Refinement */
+.lienzo-de-med {
+  background-color: #ffffff;
+  min-height: 800px;
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Barra Superior */
+.lienzo-de-med .rectangle {
+  background-color: #1a1a1a;
+  border: none;
+  border-radius: 0 0 16px 16px;
+  height: 80px;
+  left: 0;
   position: absolute;
-  left: 10px;
-  top: 25px;
+  top: 0;
+  width: 100%;
+  z-index: 10;
+}
+
+.lienzo-de-med .rectangle::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 0 0 16px 16px;
+  padding: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--subject-color) 0%,
+    #ffffff 20%,
+    var(--subject-color) 40%,
+    var(--subject-color-light) 100%
+  );
+  -webkit-mask: 
+     linear-gradient(#fff 0 0) content-box, 
+     linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 1;
+  filter: saturate(1.5) brightness(1.2);
+}
+
+.lienzo-de-med .div {
+  align-items: center;
+  border-radius: 14px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+  left: 12px;
+  position: absolute;
+  top: 18px;
+  padding: 0 16px;
+  height: 48px;
+  z-index: 20;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+}
+
+.lienzo-de-med .carbohidratos {
   color: white;
+  font-family: "Inter", sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: normal;
+  position: relative;
+}
+
+/* Barra Inferior */
+.lienzo-de-med .barra-de-botones {
+  align-items: center;
+  background-color: #333333;
+  border-radius: 40px;
+  display: flex;
+  gap: 12px;
+  height: 64px;
+  justify-content: center;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 16px;
+  position: absolute;
+  bottom: 30px;
+  width: auto;
+  min-width: 580px;
+  z-index: 100;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.lienzo-de-med .BOTON-DE-INSERTAR,
+.lienzo-de-med .boton-de-eliminar {
+  height: 46px !important;
+  width: 46px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  z-index: 50;
-  opacity: 0.6;
+  border-radius: 12px;
+  background-color: #0a0a0a !important;
+  border: none;
+  color: white;
+  transition: all 0.2s ease;
 }
 
-.back-button:hover {
-  opacity: 1;
+.lienzo-de-med .BOTON-DE-INSERTAR:hover,
+.lienzo-de-med .boton-de-eliminar:hover {
+  background-color: #1a1a1a !important;
+  transform: translateY(-2px);
 }
 
-/* Lava Lamp Animation */
-@keyframes lava-flow {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+.lienzo-de-med .icon-instance-node {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.9;
 }
 
-.lava-lamp-cyan {
+.lienzo-content {
+  padding-top: 100px;
+  height: 100%;
+  background-color: white;
+}
+
+/* Lava Lamp Animation - High Visibility Conic Version */
+.lava-effect {
   position: relative !important;
   overflow: hidden !important;
-  background: linear-gradient(-45deg, #008080, #20b2aa, #00ced1, #008080) !important;
-  background-size: 400% 400% !important;
-  animation: lava-flow 12s ease infinite !important;
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease !important;
-  will-change: background-position;
-  border: none !important;
+  background-color: var(--lava-c1, #073b3a) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  z-index: 1 !important;
 }
 
-.lava-lamp-cyan * {
+.lava-effect::before {
+  content: "" !important;
+  position: absolute !important;
+  top: -100% !important;
+  left: -100% !important;
+  width: 300% !important;
+  height: 300% !important;
+  background: conic-gradient(
+    from 0deg, 
+    var(--lava-c1, #073b3a), 
+    var(--lava-c2, #12a8a1), 
+    var(--lava-c3, #0b6b69), 
+    var(--lava-c2, #12a8a1), 
+    var(--lava-c1, #073b3a)
+  ) !important;
+  animation: lavaRotate 8s linear infinite !important;
+  z-index: 0 !important;
+  filter: blur(40px) !important;
+  opacity: 0.9 !important;
+  pointer-events: none !important;
+  will-change: transform;
+}
+
+.lava-effect * {
   z-index: 10 !important;
   position: relative !important;
 }
 
-.lava-lamp-cyan::after {
-  display: none !important;
-}
-
-.lava-lamp-cyan .card-content {
+.lava-effect .card-content {
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
   z-index: 20 !important;
 }
 
-.lava-lamp-cyan .subject-name,
-.lava-lamp-cyan .subject-icon {
+.lava-effect .subject-name,
+.lava-effect .subject-icon {
   z-index: 20 !important;
   position: relative !important;
+}
+
+/* Hide the fade-to-black overlay on subject bars when lava effect is active */
+.subject-bar.lava-effect::after {
+  display: none !important;
 }
 
 .subject-icon path,
@@ -535,4 +660,9 @@ body {
   margin-top: 0px;
   margin-left: -2px;
   margin-bottom: -6px;
+}
+
+@keyframes lavaRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

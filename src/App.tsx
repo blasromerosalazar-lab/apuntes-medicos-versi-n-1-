@@ -9,29 +9,64 @@ import {
   Clock, 
   BookOpen, 
   Box,
-  Diamond
+  Diamond,
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import LienzoDeApuntes from './components/LienzoDeApuntes';
 
 interface Note {
   id: string;
   title: string;
+  colorId?: string;
 }
 
 interface Subject {
   id: string;
   name: string;
   gradient: string;
+  colorId: string;
   notes: Note[];
 }
 
 const COLORS = [
-  { id: 'cyan', gradient: 'linear-gradient(180deg, rgba(6, 143, 134, 0.61) 11%, rgba(11, 245, 230, 0.61) 100%)', color: '#068F86' },
-  { id: 'red', gradient: 'linear-gradient(90deg, rgba(153, 27, 27, 1) 0%, rgba(255, 44, 44, 1) 100%)', color: '#991B1B' },
-  { id: 'purple', gradient: 'linear-gradient(90deg, rgba(152, 15, 150, 1) 0%, rgba(254, 25, 250, 1) 100%)', color: '#980F96' },
-  { id: 'green', gradient: 'linear-gradient(90deg, rgba(24, 138, 11, 1) 0%, rgba(41, 240, 19, 1) 100%)', color: '#188A0B' },
-  { id: 'yellow', gradient: 'linear-gradient(90deg, rgba(153, 138, 25, 1) 0%, rgba(255, 230, 41, 1) 100%)', color: '#998A19' },
-  { id: 'deep-purple', gradient: 'linear-gradient(90deg, rgba(58, 0, 99, 1) 0%, rgba(118, 0, 201, 1) 100%)', color: '#3A0063' },
+  { 
+    id: 'cyan', 
+    gradient: 'linear-gradient(180deg, rgba(6, 143, 134, 0.61) 11%, rgba(11, 245, 230, 0.61) 100%)', 
+    color: '#068F86',
+    lava: { c1: '#073b3a', c2: '#12a8a1', c3: '#0b6b69' }
+  },
+  { 
+    id: 'red', 
+    gradient: 'linear-gradient(90deg, rgba(153, 27, 27, 1) 0%, rgba(255, 44, 44, 1) 100%)', 
+    color: '#991B1B',
+    lava: { c1: '#450a0a', c2: '#991b1b', c3: '#7f1d1d' }
+  },
+  { 
+    id: 'purple', 
+    gradient: 'linear-gradient(90deg, rgba(152, 15, 150, 1) 0%, rgba(254, 25, 250, 1) 100%)', 
+    color: '#980F96',
+    lava: { c1: '#4c0519', c2: '#980f96', c3: '#701a75' }
+  },
+  { 
+    id: 'green', 
+    gradient: 'linear-gradient(90deg, rgba(24, 138, 11, 1) 0%, rgba(41, 240, 19, 1) 100%)', 
+    color: '#188A0B',
+    lava: { c1: '#064e3b', c2: '#188a0b', c3: '#14532d' }
+  },
+  { 
+    id: 'yellow', 
+    gradient: 'linear-gradient(90deg, rgba(153, 138, 25, 1) 0%, rgba(255, 230, 41, 1) 100%)', 
+    color: '#998A19',
+    lava: { c1: '#422006', c2: '#998a19', c3: '#713f12' }
+  },
+  { 
+    id: 'deep-purple', 
+    gradient: 'linear-gradient(90deg, rgba(58, 0, 99, 1) 0%, rgba(118, 0, 201, 1) 100%)', 
+    color: '#3A0063',
+    lava: { c1: '#2e1065', c2: '#3a0063', c3: '#4c1d95' }
+  },
 ];
 
 export default function App() {
@@ -43,39 +78,52 @@ export default function App() {
   const [selectedColorId, setSelectedColorId] = useState(COLORS[0].id);
   const [activeTab, setActiveTab] = useState<'recientes' | 'materias' | '3d'>('materias');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleCreateSubject = () => {
-    if (!newSubjectName.trim()) return;
+    try {
+      if (!newSubjectName.trim()) return;
 
-    const selectedColor = COLORS.find(c => c.id === selectedColorId);
-    const newSubject: Subject = {
-      id: Date.now().toString(),
-      name: newSubjectName.toUpperCase(),
-      gradient: selectedColor?.gradient || COLORS[0].gradient,
-      notes: [],
-    };
+      const selectedColor = COLORS.find(c => c.id === selectedColorId);
+      const newSubject: Subject = {
+        id: Date.now().toString(),
+        name: newSubjectName.toUpperCase(),
+        gradient: selectedColor?.gradient || COLORS[0].gradient,
+        colorId: selectedColorId,
+        notes: [],
+      };
 
-    setSubjects([...subjects, newSubject]);
-    setNewSubjectName('');
-    setIsModalOpen(false);
+      setSubjects([...subjects, newSubject]);
+      setNewSubjectName('');
+      setIsModalOpen(false);
+    } catch (err) {
+      setError('No se pudo crear la materia. Por favor, inténtalo de nuevo.');
+      console.error(err);
+    }
   };
 
   const handleCreateNote = () => {
-    if (!newNoteTitle.trim() || !selectedSubjectId) return;
+    try {
+      if (!newNoteTitle.trim() || !selectedSubjectId) return;
 
-    const updatedSubjects = subjects.map(s => {
-      if (s.id === selectedSubjectId) {
-        return {
-          ...s,
-          notes: [...s.notes, { id: Date.now().toString(), title: newNoteTitle.toUpperCase() }]
-        };
-      }
-      return s;
-    });
+      const updatedSubjects = subjects.map(s => {
+        if (s.id === selectedSubjectId) {
+          return {
+            ...s,
+            notes: [...s.notes, { id: Date.now().toString(), title: newNoteTitle.toUpperCase() }]
+          };
+        }
+        return s;
+      });
 
-    setSubjects(updatedSubjects);
-    setNewNoteTitle('');
-    setIsNoteModalOpen(false);
+      setSubjects(updatedSubjects);
+      setNewNoteTitle('');
+      setIsNoteModalOpen(false);
+    } catch (err) {
+      setError('No se pudo crear la nota. Por favor, inténtalo de nuevo.');
+      console.error(err);
+    }
   };
 
   const selectedSubject = subjects.find(s => s.id === selectedSubjectId);
@@ -86,17 +134,54 @@ export default function App() {
       ...note,
       subjectName: subject.name,
       gradient: subject.gradient,
-      subjectId: subject.id
+      subjectId: subject.id,
+      subjectColorId: subject.colorId
     }))
   ).sort((a, b) => Number(b.id) - Number(a.id));
 
-  const isBioquimica = (name: string) => {
-    return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() === 'BIOQUIMICA';
+  const getLavaStyle = (colorId: string) => {
+    const colorConfig = COLORS.find(c => c.id === colorId);
+    if (!colorConfig?.lava) return {};
+    return {
+      '--lava-c1': colorConfig.lava.c1,
+      '--lava-c2': colorConfig.lava.c2,
+      '--lava-c3': colorConfig.lava.c3,
+    } as React.CSSProperties;
   };
+
+  if (selectedNote) {
+    const subject = subjects.find(s => s.notes.some(n => n.id === selectedNote.id));
+    const colorConfig = COLORS.find(c => c.id === (subject?.colorId || 'cyan')) || COLORS[0];
+
+    return (
+      <LienzoDeApuntes 
+        title={selectedNote.title} 
+        color={colorConfig.color}
+        gradient={colorConfig.gradient}
+        onBack={() => setSelectedNote(null)} 
+      />
+    );
+  }
 
   if (selectedSubjectId && selectedSubject) {
     return (
       <div className="subject-detail-container">
+        <AnimatePresence>
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, y: -50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -50 }}
+              className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-red-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3"
+            >
+              <AlertCircle className="w-5 h-5" />
+              <span>{error}</span>
+              <button onClick={() => setError(null)} className="ml-2 hover:opacity-70">
+                <X className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <header className="subject-header">
           <div className="back-button" onClick={() => setSelectedSubjectId(null)}>
             <BookOpen className="w-8 h-8" />
@@ -111,8 +196,9 @@ export default function App() {
                 key={note.id}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className={`note-card ${isBioquimica(selectedSubject.name) ? 'lava-lamp-cyan' : ''}`}
-                style={isBioquimica(selectedSubject.name) ? {} : { background: selectedSubject.gradient }}
+                className="note-card lava-effect"
+                style={getLavaStyle(selectedSubject.colorId)}
+                onClick={() => setSelectedNote(note)}
               >
                 <div className="card-content">
                   <Diamond className="note-icon fill-white text-white" />
@@ -228,6 +314,22 @@ export default function App() {
 
   return (
     <div className="app-container">
+      <AnimatePresence>
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-red-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3"
+          >
+            <AlertCircle className="w-5 h-5" />
+            <span>{error}</span>
+            <button onClick={() => setError(null)} className="ml-2 hover:opacity-70">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Header */}
       <header className="header-frame">
         <h1 className="title-text">
@@ -245,8 +347,8 @@ export default function App() {
                   key={subject.id}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className={`subject-bar ${isBioquimica(subject.name) ? 'lava-lamp-cyan' : ''}`}
-                  style={isBioquimica(subject.name) ? {} : { background: subject.gradient }}
+                  className="subject-bar lava-effect"
+                  style={getLavaStyle(subject.colorId)}
                   onClick={() => setSelectedSubjectId(subject.id)}
                 >
                   <Diamond className="subject-icon fill-white text-white" />
@@ -265,9 +367,9 @@ export default function App() {
                   key={note.id}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className={`recientes-card ${isBioquimica(note.subjectName) ? 'lava-lamp-cyan' : ''}`}
-                  style={isBioquimica(note.subjectName) ? {} : { background: note.gradient.replace('90deg', '180deg') }}
-                  onClick={() => setSelectedSubjectId(note.subjectId)}
+                  className="recientes-card lava-effect"
+                  style={getLavaStyle(note.subjectColorId)}
+                  onClick={() => setSelectedNote({ id: note.id, title: note.title })}
                 >
                   <div className="card-content">
                     <Diamond className="card-diamond" />

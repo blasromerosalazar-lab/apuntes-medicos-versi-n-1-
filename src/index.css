@@ -478,10 +478,12 @@ body {
 /* Lienzo de Apuntes Styles - High Fidelity Refinement */
 .lienzo-de-med {
   background-color: #ffffff;
-  min-height: 800px;
+  height: 100vh;
   position: relative;
   width: 100%;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Barra Superior */
@@ -546,6 +548,21 @@ body {
   position: relative;
 }
 
+/* Barra de Herramientas Container */
+.frame {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.frame > * {
+  pointer-events: auto;
+}
+
 /* Sub-menú de Insertar Texto */
 .frame .div-4 {
   background-color: #232323;
@@ -581,7 +598,8 @@ body {
   transition: all 0.2s ease;
 }
 
-.frame .propiedad-activada {
+.frame .propiedad-activada,
+.frame .propiedad-activado {
   height: 46px !important;
   width: 46px !important;
   display: flex;
@@ -688,7 +706,9 @@ body {
 .frame .ellipse-5 { background-color: #ff2c2c !important; }
 
 .frame .boton-de-elegir-tamano {
-  display: none; /* Hide for now as it's not clear where it goes in the new layout */
+  cursor: pointer;
+  border: none;
+  background: transparent;
 }
 .lienzo-de-med .barra-de-botones {
   align-items: center;
@@ -739,8 +759,11 @@ body {
 
 .lienzo-content {
   padding-top: 100px;
-  height: 100%;
+  flex-grow: 1;
   background-color: white;
+  position: relative;
+  overflow: hidden;
+  z-index: 5;
 }
 
 /* Lava Lamp Animation - High Visibility Conic Version */

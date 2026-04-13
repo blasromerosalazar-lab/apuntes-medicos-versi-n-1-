@@ -257,7 +257,7 @@ export default function App() {
               </div>
               {/* Active Layer (Yellow Sweep) */}
               <motion.div 
-                className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+                className="absolute inset-0 flex flex-col items-center justify-center text-[#FFD105] overflow-hidden pointer-events-none"
                 initial={false}
                 animate={{ 
                   clipPath: activeTab === 'recientes' ? 'inset(0 0% 0 0)' : 'inset(0 100% 0 0)' 
@@ -276,7 +276,7 @@ export default function App() {
                 <span className="nav-text">Materias</span>
               </div>
               <motion.div 
-                className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+                className="absolute inset-0 flex flex-col items-center justify-center text-[#FFD105] overflow-hidden pointer-events-none"
                 initial={false}
                 animate={{ 
                   clipPath: 'inset(0 0% 0 0)' 
@@ -295,7 +295,7 @@ export default function App() {
                 <span className="nav-text">3D/Animaciones</span>
               </div>
               <motion.div 
-                className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+                className="absolute inset-0 flex flex-col items-center justify-center text-[#FFD105] overflow-hidden pointer-events-none"
                 initial={false}
                 animate={{ 
                   clipPath: activeTab === '3d' ? 'inset(0 0% 0 0)' : 'inset(0 100% 0 0)' 
@@ -458,7 +458,7 @@ export default function App() {
             </div>
             {/* Active Layer (Yellow Sweep) */}
             <motion.div 
-              className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+              className="absolute inset-0 flex flex-col items-center justify-center text-[#FFD105] overflow-hidden pointer-events-none"
               initial={false}
               animate={{ 
                 clipPath: activeTab === 'recientes' ? 'inset(0 0% 0 0)' : 'inset(0 100% 0 0)' 
@@ -480,7 +480,7 @@ export default function App() {
               <span className="nav-text">Materias</span>
             </div>
             <motion.div 
-              className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+              className="absolute inset-0 flex flex-col items-center justify-center text-[#FFD105] overflow-hidden pointer-events-none"
               initial={false}
               animate={{ 
                 clipPath: activeTab === 'materias' ? 'inset(0 0% 0 0)' : 'inset(0 100% 0 0)' 
@@ -502,7 +502,7 @@ export default function App() {
               <span className="nav-text">3D/Animaciones</span>
             </div>
             <motion.div 
-              className="absolute inset-0 flex flex-col items-center justify-center text-[#fce00b] overflow-hidden pointer-events-none"
+              className="absolute inset-0 flex flex-col items-center justify-center text-[#FFD105] overflow-hidden pointer-events-none"
               initial={false}
               animate={{ 
                 clipPath: activeTab === '3d' ? 'inset(0 0% 0 0)' : 'inset(0 100% 0 0)' 

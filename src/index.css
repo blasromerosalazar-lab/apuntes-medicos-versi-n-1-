@@ -130,7 +130,7 @@ body {
 }
 
 .nav-item.active .nav-text {
-  color: #fce00b;
+  color: #FFD105;
   font-weight: 100;
 }
 
@@ -566,7 +566,7 @@ body {
 /* Sub-menú de Insertar Texto */
 .frame .div-4 {
   background-color: #232323;
-  border: 2px solid #fce00b;
+  border: 2px solid #FFD105;
   border-radius: 40px;
   display: flex;
   align-items: center;
@@ -608,9 +608,9 @@ body {
   background: #0a0a0a;
   border-radius: 12px;
   cursor: pointer;
-  border: 2px solid #fce00b;
+  border: 2px solid #FFD105;
   position: relative;
-  box-shadow: 0 0 10px rgba(252, 224, 11, 0.3);
+  box-shadow: 0 0 10px rgba(255, 209, 5, 0.3);
 }
 
 .frame .text-wrapper {
@@ -623,7 +623,7 @@ body {
 }
 
 .frame .propiedad-activada .text-wrapper {
-  color: #fce00b;
+  color: #FFD105;
 }
 
 .frame .organizacion-central-2 {
@@ -698,7 +698,7 @@ body {
   border-color: white;
 }
 
-.frame .ellipse-yellow { background-color: #fce00b !important; }
+.frame .ellipse-yellow { background-color: #FFD105 !important; }
 .frame .ellipse-green { background-color: #00ff00 !important; }
 .frame .ellipse-2-instance { background-color: #7500c9 !important; }
 .frame .ellipse-3 { background-color: #fe19fa !important; }
@@ -775,6 +775,19 @@ body {
   z-index: 1 !important;
 }
 
+/* Clase que se aplica al cuadro de texto cuando lo seleccionas */
+.cuadro-seleccionado {
+  outline: 2px solid #ff4d4d !important; /* El borde rojo/naranja del video */
+  background-color: rgba(255, 77, 77, 0.05); /* Un fondo muy sutil */
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  cursor: grab;
+}
+
+/* Cursor cuando estás moviendo el grupo */
+.grabbed {
+  cursor: grabbing !important;
+}
+
 .lava-effect::before {
   content: "" !important;
   position: absolute !important;
@@ -847,16 +860,15 @@ body {
 .frame .icons-grid {
   background-color: #232323;
   border: 2px solid;
-  border-color: #fce00b;
-  border-radius: 5px;
+  border-color: #FFD105;
+  border-radius: 8px;
   display: grid;
-  gap: 5px 10px;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
-  grid-template-rows: repeat(5, fit-content(100%));
+  gap: 12px;
+  grid-template-columns: repeat(8, 1fr);
   height: auto;
   min-height: 122px;
-  padding: 8px 7px 15px;
-  width: 258px;
+  padding: 15px;
+  width: 100%;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
@@ -865,10 +877,13 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: transform 0.1s ease;
+  transition: all 0.2s ease;
+  padding: 4px;
+  border-radius: 4px;
 }
 
 .frame [class^="vector-"]:hover {
+  background-color: rgba(255, 255, 255, 0.1);
   transform: scale(1.2);
 }
 
@@ -922,4 +937,170 @@ body {
 @keyframes lavaRotate {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* --- Insert Lines Sub-menu Styles (Exact from User) --- */
+.frame {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  position: relative;
+}
+
+.frame .div {
+  align-items: center;
+  align-self: stretch;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 11px;
+  position: relative;
+  width: 100%;
+}
+
+.frame .sub-menu-completo-de-boton-de-insertar-lineas {
+  left: unset !important;
+}
+
+.frame .barra-de-botones-instance {
+  align-self: stretch !important;
+  left: unset !important;
+  top: unset !important;
+  width: 100% !important;
+}
+
+.frame .boton-de-anadir-flechas {
+  height: 38px !important;
+  position: relative !important;
+  width: 38px !important;
+}
+
+.frame .boton-de-seleccion {
+  height: 38px !important;
+  left: 64px !important;
+  position: absolute !important;
+  top: 88px !important;
+  width: 38px !important;
+}
+
+.frame .div-2 {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  width: 353px;
+}
+
+.frame .div-3 {
+  align-items: flex-start;
+  background-color: #232323;
+  border-radius: 3px;
+  display: flex;
+  gap: 5px;
+  height: 27px;
+  padding: 3px 14px 4px 9px;
+  position: relative;
+  width: 156px;
+}
+
+.frame .ellipse-2 {
+  left: unset !important;
+  top: unset !important;
+}
+
+.frame .ellipse-instance {
+  background-color: #7500c9 !important;
+  left: unset !important;
+  top: unset !important;
+}
+
+.frame .ellipse-2-instance {
+  background-color: #fe19fa !important;
+  left: unset !important;
+  top: unset !important;
+}
+
+.frame .design-component-instance-node {
+  background-color: #0bf5e6 !important;
+  left: unset !important;
+  top: unset !important;
+}
+
+.frame .ellipse-3 {
+  background-color: #ff2c2c !important;
+  left: unset !important;
+  top: unset !important;
+}
+
+.frame .propiedad-1-variante2 {
+  height: 38px !important;
+  margin-bottom: -49px !important;
+  position: relative !important;
+  width: 38px !important;
+}
+
+.frame .sub-menu-completo-de-instance {
+  align-self: stretch !important;
+  left: unset !important;
+  margin-top: -21px !important;
+  width: 100% !important;
+}
+
+.frame .barra-de-botones-2 {
+  height: 38px !important;
+  margin-bottom: -1px !important;
+  margin-left: -15px !important;
+  margin-top: -1px !important;
+  position: relative !important;
+  width: 38px !important;
+}
+
+.frame .barra-de-botones-3 {
+  left: unset !important;
+  margin-bottom: -1px !important;
+  margin-top: -1px !important;
+  top: unset !important;
+}
+
+.frame .barra-de-botones-4 {
+  flex: 0 0 auto !important;
+  left: unset !important;
+  margin-bottom: -1px !important;
+  margin-top: -1px !important;
+  top: unset !important;
+}
+
+.frame .propiedad-1-variante2-instance {
+  height: 38px !important;
+  margin-bottom: -1px !important;
+  margin-top: -1px !important;
+  position: relative !important;
+  width: 38px !important;
+}
+
+.frame .barra-de-botones-5 {
+  left: unset !important;
+  margin-bottom: -1px !important;
+  margin-right: -15px !important;
+  margin-top: -1px !important;
+  top: unset !important;
+}
+
+.frame .barra-de-botones-6 {
+  align-self: stretch !important;
+  left: unset !important;
+  padding: 9px 30px !important;
+  top: unset !important;
+  width: 100% !important;
+}
+
+.frame .propiedad-1-predeterminada-activado-desactivadoi {
+  height: 38px !important;
+  left: 67px !important;
+  position: absolute !important;
+  top: 315px !important;
+  width: 38px !important;
 }

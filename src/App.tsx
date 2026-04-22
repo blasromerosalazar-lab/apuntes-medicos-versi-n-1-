@@ -87,7 +87,7 @@ export default function App() {
 
       const selectedColor = COLORS.find(c => c.id === selectedColorId);
       const newSubject: Subject = {
-        id: Date.now().toString(),
+        id: `subject-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         name: newSubjectName.toUpperCase(),
         gradient: selectedColor?.gradient || COLORS[0].gradient,
         colorId: selectedColorId,
@@ -111,7 +111,7 @@ export default function App() {
         if (s.id === selectedSubjectId) {
           return {
             ...s,
-            notes: [...s.notes, { id: Date.now().toString(), title: newNoteTitle.toUpperCase() }]
+            notes: [...s.notes, { id: `note-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, title: newNoteTitle.toUpperCase() }]
           };
         }
         return s;
@@ -137,7 +137,12 @@ export default function App() {
       subjectId: subject.id,
       subjectColorId: subject.colorId
     }))
-  ).sort((a, b) => Number(b.id) - Number(a.id));
+  ).sort((a, b) => {
+    // Extract timestamp from ID: "note-TIMESTAMP-RANDOM"
+    const timeA = Number(a.id.split('-')[1]) || 0;
+    const timeB = Number(b.id.split('-')[1]) || 0;
+    return timeB - timeA;
+  });
 
   const getLavaStyle = (colorId: string) => {
     const colorConfig = COLORS.find(c => c.id === colorId);
@@ -155,6 +160,7 @@ export default function App() {
 
     return (
       <LienzoDeApuntes 
+        id={selectedNote.id}
         title={selectedNote.title} 
         color={colorConfig.color}
         gradient={colorConfig.gradient}

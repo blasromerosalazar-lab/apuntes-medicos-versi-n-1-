@@ -1,5 +1,5 @@
 {
   "name": "Medical Notes App",
   "description": "A pixel-perfect medical notes application with a vibrant grid layout and minimalist navigation.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["camera"]
 }

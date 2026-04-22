@@ -14,6 +14,8 @@ interface TextBoxProps {
   textDecoration: string;
   textAlign: 'left' | 'center' | 'right';
   backgroundColor?: string;
+  rotation?: number;
+  zIndex?: number;
   isSelected: boolean;
   isMultiSelected: boolean;
   isSelectionMode: boolean;
@@ -41,6 +43,8 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
   textDecoration,
   textAlign,
   backgroundColor = 'transparent',
+  rotation = 0,
+  zIndex = 10,
   isSelected,
   isMultiSelected,
   isSelectionMode,
@@ -69,18 +73,25 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
   const mvY = useMotionValue(y);
   const mvWidth = useMotionValue(width);
   const mvHeight = useMotionValue(height);
+  const mvRotate = useMotionValue(rotation);
 
   // Sync motion values ONLY when props change from OUTSIDE (e.g. undo/redo or initial load)
   // We use a ref to track the last values we sent to the parent to avoid feedback loops
   const lastSentValues = useRef({ x, y, width, height });
 
   useEffect(() => {
-    // Only update motion values if the props are different from what we last sent
+    // Only update motion values if the props are different from what we last sent or received
     // This prevents the "jumping" when the parent state updates after a drag/resize
-    if (Math.abs(x - lastSentValues.current.x) > 0.1) mvX.set(x);
-    if (Math.abs(y - lastSentValues.current.y) > 0.1) mvY.set(y);
-    if (Math.abs(width - lastSentValues.current.width) > 0.1) mvWidth.set(width);
-    if (Math.abs(height - lastSentValues.current.height) > 0.1) mvHeight.set(height);
+    const xDiff = Math.abs(x - lastSentValues.current.x);
+    const yDiff = Math.abs(y - lastSentValues.current.y);
+    const widthDiff = Math.abs(width - lastSentValues.current.width);
+    const heightDiff = Math.abs(height - lastSentValues.current.height);
+
+    if (xDiff > 0.1) mvX.set(x);
+    if (yDiff > 0.1) mvY.set(y);
+    if (widthDiff > 0.1) mvWidth.set(width);
+    if (heightDiff > 0.1) mvHeight.set(height);
+    mvRotate.set(rotation);
     
     lastSentValues.current = { x, y, width, height };
   }, [x, y, width, height, mvX, mvY, mvWidth, mvHeight]);
@@ -127,9 +138,10 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
       width: mvWidth.get(),
       height: mvHeight.get(),
       x: mvX.get(),
-      y: mvY.get()
+      y: mvY.get(),
+      rotation: mvRotate.get()
     };
-    lastSentValues.current = finalValues;
+    lastSentValues.current = { x: finalValues.x, y: finalValues.y, width: finalValues.width, height: finalValues.height };
     onUpdate(id, finalValues);
   };
 
@@ -158,8 +170,8 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
     // Start dragging state
     setIsActivated(true);
     
-    // Trigger manual drag ONLY if we can edit or if it's multi-selected
-    if (canEdit || isMultiSelected) {
+    // Trigger manual drag only if the text tool is active (canEdit)
+    if (canEdit) {
       dragControls.start(e);
     }
   };
@@ -178,7 +190,11 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
     setIsDragging(false);
     const finalX = mvX.get();
     const finalY = mvY.get();
+    
+    // Crucial: Update the ref BEFORE calling onUpdate to prevent the incoming props 
+    // from triggering the sync useEffect and snapping the box back
     lastSentValues.current = { ...lastSentValues.current, x: finalX, y: finalY };
+    
     onUpdate(id, { x: finalX, y: finalY });
   };
 
@@ -189,8 +205,13 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
     }
   }, [isSelected, isMultiSelected]);
 
+  const lastEditingValue = useRef(isEditing);
   useEffect(() => {
-    onEditingChange?.(isEditing);
+    if (lastEditingValue.current !== isEditing) {
+      onEditingChange?.(isEditing);
+      lastEditingValue.current = isEditing;
+    }
+    
     if (isEditing && editorRef.current) {
       // Focus and move cursor to end if it's empty or just starting
       if (editorRef.current.innerHTML === 'Escribe aquí...') {
@@ -317,11 +338,6 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
     }
   };
 
-  // Handle drag from the dedicated handle
-  const handleDragStart = (e: React.PointerEvent) => {
-    dragControls.start(e);
-  };
-
   useEffect(() => {
     if (isEditing && editorRef.current) {
       if (editorRef.current.innerHTML === 'Escribe aquí...') {
@@ -344,11 +360,12 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
           y: mvY,
           width: mvWidth,
           height: mvHeight,
-          zIndex: isSelected ? 1000 : 10,
+          rotate: mvRotate,
+          zIndex: isSelected ? 1000 : zIndex,
           touchAction: 'none',
           pointerEvents: isHandMode ? 'none' : 'auto',
         }}
-        drag={(canEdit || isMultiSelected) && !isResizing && !isHandMode}
+        drag={canEdit && !isResizing && !isHandMode}
         dragControls={dragControls}
         dragListener={false}
         dragMomentum={false}
@@ -377,19 +394,10 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
           }
         }}
       >
-        {isEditing && (
-          <div 
-            className="absolute -top-5 left-0 right-0 h-5 bg-[#FFD105] rounded-t-sm flex items-center justify-center cursor-move z-[1002]"
-            onPointerDown={handleDragStart}
-          >
-            <div className="w-6 h-1 bg-white/40 rounded-full" />
-          </div>
-        )}
         <div
           className={`w-full h-full p-2 border-2 transition-colors rounded-sm flex flex-col ${
             isSelected ? 'border-[#FFD105] bg-white/5 shadow-sm' : 'border-transparent bg-transparent'
           } ${isSelected && canEdit ? 'cursor-move' : ''} ${isMultiSelected ? 'cuadro-seleccionado' : ''} ${isDragging && isMultiSelected ? 'grabbed' : ''}`}
-          style={isEditing ? { borderTopLeftRadius: 0, borderTopRightRadius: 0 } : {}}
           onDoubleClick={(e) => {
             if (isSelectionMode) return;
             e.stopPropagation();
@@ -443,24 +451,68 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   setIsResizing(true);
+                  // Ensure we don't start a drag on the parent
+                  if (e.currentTarget.setPointerCapture) {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                  }
                 }}
-                className={`absolute w-4 h-4 bg-white border-2 border-[#FFD105] rounded-full z-[1001] shadow-sm`}
+                onPointerUp={(e) => {
+                  if (e.currentTarget.releasePointerCapture) {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  }
+                }}
+                className={`absolute w-6 h-6 -m-3 bg-white border-2 border-[#FFD105] rounded-full z-[1001] shadow-md flex items-center justify-center`}
                 style={{
-                  top: dir.includes('n') ? -8 : dir.includes('s') ? '100%' : '50%',
-                  left: dir.includes('w') ? -8 : dir.includes('e') ? '100%' : '50%',
-                  marginTop: dir === 'e' || dir === 'w' ? -8 : 0,
-                  marginLeft: dir === 'n' || dir === 's' ? -8 : 0,
+                  top: dir.includes('n') ? 0 : dir.includes('s') ? '100%' : '50%',
+                  left: dir.includes('w') ? 0 : dir.includes('e') ? '100%' : '50%',
                   cursor: `${dir}-resize`,
                   touchAction: 'none',
                 }}
               >
+                <div className="w-2 h-2 bg-[#FFD105] rounded-full pointer-events-none" />
                 <motion.div 
-                  className="w-full h-full"
+                  className="absolute inset-[-10px]"
                   onPan={(e, info) => handleResize(dir, info)}
                   onPanEnd={handleResizeEnd}
                 />
               </div>
             ))}
+
+            {/* Rotation Handle */}
+            <div
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setIsResizing(true);
+                if (e.currentTarget.setPointerCapture) {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                }
+              }}
+              onPointerUp={(e) => {
+                if (e.currentTarget.releasePointerCapture) {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+                handleResizeEnd();
+              }}
+              className="absolute w-8 h-8 -top-12 left-1/2 -ml-4 bg-white border-2 border-[#8e44ad] rounded-full z-[1001] shadow-lg flex items-center justify-center cursor-alias"
+            >
+              <div className="w-1 h-3 bg-[#8e44ad] rounded-full absolute -bottom-3 left-1/2 -ml-[0.5px]" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8e44ad" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                <polyline points="21 3 21 8 16 8" />
+              </svg>
+              <motion.div 
+                className="absolute inset-[-10px]"
+                onPan={(e, info) => {
+                  const rect = editorRef.current?.parentElement?.parentElement?.getBoundingClientRect();
+                  if (rect) {
+                    const centerX = rect.left + rect.width / 2;
+                    const centerY = rect.top + rect.height / 2;
+                    const angle = Math.atan2(info.point.y - centerY, info.point.x - centerX) * (180 / Math.PI) + 90;
+                    mvRotate.set(angle);
+                  }
+                }}
+              />
+            </div>
           </>
         )}
       </motion.div>

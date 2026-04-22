@@ -7,6 +7,53 @@
   --font-poppins: "Poppins", sans-serif;
 }
 
+/* Layout Editor Draggable Elements */
+.is-dragging, .is-resizing {
+  transition: none !important;
+  cursor: grabbing !important;
+  z-index: 1000 !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  touch-action: none !important;
+  will-change: transform;
+}
+
+.is-dragging .layout-element-content,
+.is-resizing .layout-element-content {
+  opacity: 0.6;
+  filter: grayscale(1);
+}
+
+.layout-modal-container {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+
+.a4-sheet-container {
+  touch-action: none;
+  contain: layout paint;
+}
+
+.layout-element-content {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translate3d(0,0,0);
+  transform-style: preserve-3d;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.interact-resize-ghost {
+  position: absolute;
+  border: 2px dashed #FFD105;
+  background: rgba(255, 209, 5, 0.1);
+  pointer-events: none;
+  z-index: 1001;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -704,6 +751,8 @@ body {
 .frame .ellipse-3 { background-color: #fe19fa !important; }
 .frame .ellipse-4 { background-color: #0bf5e6 !important; }
 .frame .ellipse-5 { background-color: #ff2c2c !important; }
+.frame .ellipse-white { background-color: #ffffff !important; }
+.frame .ellipse-black { background-color: #000000 !important; }
 
 .frame .boton-de-elegir-tamano {
   cursor: pointer;
@@ -1103,4 +1152,10 @@ body {
   position: absolute !important;
   top: 315px !important;
   width: 38px !important;
+}
+
+img {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: high-quality;
+  -ms-interpolation-mode: bicubic;
 }

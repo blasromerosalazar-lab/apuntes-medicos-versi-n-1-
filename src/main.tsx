@@ -58,7 +58,7 @@ const registerSW = () => {
   }
 };
 
-registerSW();
+// registerSW(); // Desactivado temporalmente para evitar pantalla blanca por caché
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

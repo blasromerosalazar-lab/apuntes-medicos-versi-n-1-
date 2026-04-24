@@ -2,9 +2,7 @@ const CACHE_NAME = `mednotes-v${new Date().getTime()}`;
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './manifest.json',
-  './hand_model.glb',
-  './bioquimica_esquema.svg'
+  './manifest.json'
 ];
 
 // Instalación: Guarda todo en el búnker

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, memo } from 'react';
 import { motion, useMotionValue, useDragControls, MotionConfig } from 'motion/react';
 import Lottie from "lottie-react";
 
@@ -12,7 +12,7 @@ interface LottieProps {
   isSelected: boolean;
   isMultiSelected: boolean;
   isSelectionMode: boolean;
-  onSelect: () => void;
+  onSelect: (id: string) => void;
   onToggleMultiSelect: (id: string) => void;
   onUpdate: (id: string, updates: any) => void;
   onGroupDrag: (id: string, delta: { x: number, y: number }) => void;
@@ -22,7 +22,7 @@ interface LottieProps {
   labels?: { start: number, end: number, text: string }[];
 }
 
-const LottieComponent: React.FC<LottieProps> = ({
+const LottieComponent: React.FC<LottieProps> = memo(({
   id,
   x,
   y,
@@ -94,22 +94,24 @@ const LottieComponent: React.FC<LottieProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
     if (isResizing) return;
 
     if (isSelectionMode) {
-      if (isMultiSelected) {
-        dragControls.start(e);
-      } else {
+      if (!isMultiSelected) {
         onToggleMultiSelect(id);
       }
+      dragControls.start(e);
       return;
     }
 
     if (!isSelected && !isMultiSelected) {
-      onSelect();
+      onSelect(id);
     }
     
-    dragControls.start(e);
+    if (!isHandMode) {
+      dragControls.start(e);
+    }
 
     // Long press to restart
     longPressTimerRef.current = setTimeout(() => {
@@ -175,7 +177,7 @@ const LottieComponent: React.FC<LottieProps> = ({
   return (
     <MotionConfig transformPagePoint={(point) => ({ x: point.x / canvasScale, y: point.y / canvasScale })}>
       <motion.div
-        className={`contenedor-lottie ${isSelected ? 'selected' : ''} ${isMultiSelected ? 'cuadro-seleccionado' : ''}`}
+        className={`contenedor-lottie ${isSelected || isMultiSelected ? 'cuadro-seleccionado' : ''}`}
         style={{
           position: 'absolute',
           left: 0,
@@ -199,9 +201,8 @@ const LottieComponent: React.FC<LottieProps> = ({
         dragElastic={0}
         onDragStart={() => setIsDragging(true)}
         onDrag={(event, info) => {
-          if (isMultiSelected) {
-            onGroupDrag(id, info.delta);
-          }
+          // Siempre notificamos el arrastre para sincronizar otros elementos o líneas conectoras
+          onGroupDrag(id, info.delta);
         }}
         onDragEnd={() => {
           handleDragEnd();
@@ -301,6 +302,6 @@ const LottieComponent: React.FC<LottieProps> = ({
       </motion.div>
     </MotionConfig>
   );
-};
+});
 
 export default LottieComponent;

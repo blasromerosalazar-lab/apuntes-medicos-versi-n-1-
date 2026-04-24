@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, memo } from 'react';
 import { motion, useMotionValue, useDragControls, MotionConfig } from 'motion/react';
 import { Plus, Edit2, Palette, Trash2, X, PlusCircle, MoreHorizontal } from 'lucide-react';
 
@@ -12,6 +12,8 @@ interface SchemaNodeProps {
   color: string;
   isTracing?: boolean;
   isSelected: boolean;
+  isMultiSelected: boolean;
+  isSelectionMode: boolean;
   isSchemaMode: boolean;
   canvasScale: number;
   bold?: boolean;
@@ -19,14 +21,20 @@ interface SchemaNodeProps {
   underline?: boolean;
   strikethrough?: boolean;
   align?: 'left' | 'center' | 'right';
-  onSelect: () => void;
+  onSelect: (id: string) => void;
+  onToggleMultiSelect: (id: string) => void;
   onUpdate: (id: string, updates: any) => void;
   onDelete: (id: string) => void;
   onAddChild: (parentId: string) => void;
   onStartEdit: (id: string) => void;
+  onInteraction: (e: React.PointerEvent) => void;
+  onCancelInteraction?: () => void;
+  onGroupDrag: (id: string, delta: { x: number, y: number }) => void;
+  onGroupDragEnd: () => void;
+  schemaId?: string;
 }
 
-const SchemaNodeComponent: React.FC<SchemaNodeProps> = ({
+const SchemaNodeComponent: React.FC<SchemaNodeProps> = memo(({
   id,
   text,
   x,
@@ -36,6 +44,8 @@ const SchemaNodeComponent: React.FC<SchemaNodeProps> = ({
   color,
   isTracing,
   isSelected,
+  isMultiSelected,
+  isSelectionMode,
   isSchemaMode,
   canvasScale,
   bold,
@@ -44,16 +54,33 @@ const SchemaNodeComponent: React.FC<SchemaNodeProps> = ({
   strikethrough,
   align = 'center',
   onSelect,
+  onToggleMultiSelect,
   onUpdate,
   onDelete,
   onAddChild,
   onStartEdit,
+  onInteraction,
+  onCancelInteraction,
+  onGroupDrag,
+  onGroupDragEnd,
+  schemaId,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showColorPalette, setShowColorPalette] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const isMultiSelectedRef = useRef(isMultiSelected);
+  const pointerDownTimeRef = useRef(0);
+  const downPosRef = useRef({ x: 0, y: 0 });
+
+  const wasSelectedAtPointerDown = useRef(false);
+
+  useEffect(() => {
+    isMultiSelectedRef.current = isMultiSelected;
+  }, [isMultiSelected]);
   
   const mvX = useMotionValue(x);
   const mvY = useMotionValue(y);
@@ -66,6 +93,30 @@ const SchemaNodeComponent: React.FC<SchemaNodeProps> = ({
   const handleDragEnd = () => {
     onUpdate(id, { x: mvX.get(), y: mvY.get() });
   };
+
+  // High-performance group drag listener
+  useEffect(() => {
+    const handleGroupDragEvent = (e: any) => {
+      const { senderId, delta } = e.detail;
+      if (isMultiSelectedRef.current && senderId !== id) {
+        mvX.set(mvX.get() + delta.x);
+        mvY.set(mvY.get() + delta.y);
+      }
+    };
+
+    const handleGroupDragEndEvent = () => {
+      if (isMultiSelectedRef.current) {
+        handleDragEnd();
+      }
+    };
+
+    window.addEventListener('group-drag', handleGroupDragEvent);
+    window.addEventListener('group-drag-end', handleGroupDragEndEvent);
+    return () => {
+      window.removeEventListener('group-drag', handleGroupDragEvent);
+      window.removeEventListener('group-drag-end', handleGroupDragEndEvent);
+    };
+  }, [id, mvX, mvY]);
 
   useEffect(() => {
     if (isEditing && editorRef.current) {
@@ -86,6 +137,14 @@ const SchemaNodeComponent: React.FC<SchemaNodeProps> = ({
     return () => window.removeEventListener('stop-schema-editing', handleStopEditing);
   }, []);
 
+  useEffect(() => {
+    if (!isSelected) {
+      setShowMenu(false);
+      setShowColorPalette(false);
+      setIsEditing(false);
+    }
+  }, [isSelected]);
+
   return (
     <MotionConfig transformPagePoint={(point) => ({ x: point.x / canvasScale, y: point.y / canvasScale })}>
       <motion.div
@@ -100,22 +159,118 @@ const SchemaNodeComponent: React.FC<SchemaNodeProps> = ({
           zIndex: isSelected ? 1001 : 100,
           touchAction: 'none',
         }}
-        drag={isSchemaMode}
+        drag={isSchemaMode || isSelectionMode}
         dragControls={dragControls}
-        dragListener={!isEditing && isSchemaMode}
+        dragListener={false}
         dragMomentum={false}
-        onDragEnd={handleDragEnd}
+        dragElastic={0}
+        onDragStart={() => {
+          onCancelInteraction?.();
+          if (isSelectionMode && !isMultiSelectedRef.current) {
+            onToggleMultiSelect(id);
+          }
+        }}
+        onDrag={(event, info) => {
+          // Siempre notificamos el arrastre para que las líneas conectoras se actualicen suavemente
+          onGroupDrag(id, info.delta);
+        }}
+        onDragEnd={() => {
+          handleDragEnd();
+          if (isMultiSelectedRef.current) {
+            window.dispatchEvent(new CustomEvent('group-drag-end'));
+            onGroupDragEnd();
+          }
+        }}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          pointerDownTimeRef.current = Date.now();
+          downPosRef.current = { x: e.clientX, y: e.clientY };
+          wasSelectedAtPointerDown.current = isMultiSelected;
+          
+          if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+          
+          if (!isEditing) {
+            longPressTimerRef.current = setTimeout(() => {
+              setIsEditing(true);
+              onStartEdit(id);
+              setShowMenu(false);
+              if (window.navigator?.vibrate) window.navigator.vibrate(50);
+            }, 500);
+            
+            const clearLongPress = () => {
+              if (longPressTimerRef.current) {
+                clearTimeout(longPressTimerRef.current);
+                longPressTimerRef.current = null;
+              }
+            };
+            window.addEventListener('pointerup', clearLongPress, { once: true });
+            window.addEventListener('pointercancel', clearLongPress, { once: true });
+          }
+          
+          if (isSelectionMode) {
+            if (!isMultiSelected) {
+              onToggleMultiSelect(id);
+            }
+            dragControls.start(e);
+            onInteraction(e);
+            return;
+          }
+
+          if (!isSelected && !isMultiSelected) {
+            onSelect(id);
+          }
+          if (isSchemaMode && (isMultiSelected || !isEditing)) {
+            dragControls.start(e);
+          }
+        }}
+        onPointerMove={(e) => {
+          if (longPressTimerRef.current) {
+            const dx = Math.abs(e.clientX - downPosRef.current.x);
+            const dy = Math.abs(e.clientY - downPosRef.current.y);
+            if (dx > 10 || dy > 10) {
+              clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = null;
+            }
+          }
+        }}
+        onPointerUp={() => {
+          if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+          onCancelInteraction?.();
+        }}
+        onPointerLeave={() => {
+          if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+          onCancelInteraction?.();
+        }}
+        onPointerCancel={() => {
+          if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+          onCancelInteraction?.();
+        }}
         onClick={(e) => {
           e.stopPropagation();
+          const isLongPress = Date.now() - pointerDownTimeRef.current > 800;
+          
+          if (isSelectionMode) {
+            // If it was already selected at pointer down, toggle it OFF on click
+            if (!isLongPress && wasSelectedAtPointerDown.current) {
+              onToggleMultiSelect(id);
+            }
+            return;
+          }
           if (!isSchemaMode) return;
-          onSelect();
-          setShowMenu(!showMenu);
+          // onSelect() and menu are handled by the interaction logic if needed
+          // but we keep consistent behavior
+          onSelect(id);
+          if (!isSelected) {
+            setShowMenu(true);
+          } else {
+            setShowMenu(!showMenu);
+          }
           setShowColorPalette(false);
         }}
       >
         <div
           className={`w-full h-full rounded-2xl border-2 flex items-center justify-center p-3 transition-all shadow-lg ${
-            isSelected ? 'border-white ring-4 ring-[#8e44ad]/30' : 'border-transparent'
+            isSelected || isMultiSelected ? 'border-white ring-4 ring-[#8e44ad]/30 cuadro-seleccionado' : 'border-transparent'
           }`}
           style={{ 
             backgroundColor: color,
@@ -202,6 +357,6 @@ const SchemaNodeComponent: React.FC<SchemaNodeProps> = ({
       </motion.div>
     </MotionConfig>
   );
-};
+});
 
 export default SchemaNodeComponent;

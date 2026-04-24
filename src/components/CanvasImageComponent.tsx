@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, memo } from 'react';
 import { motion, useMotionValue, useDragControls, MotionConfig } from 'motion/react';
+import { Tag, Trash2, ChevronLeft } from 'lucide-react';
 
 interface CanvasImageProps {
   id: string;
@@ -15,15 +16,17 @@ interface CanvasImageProps {
   isSelectionMode: boolean;
   canEdit: boolean;
   isHandMode: boolean;
-  onSelect: () => void;
+  isEditing: boolean;
+  onSelect: (id: string) => void;
   onToggleMultiSelect: (id: string) => void;
   onUpdate: (id: string, updates: any) => void;
   onGroupDrag: (id: string, delta: { x: number, y: number }) => void;
   onGroupDragEnd: () => void;
+  onInteraction: (e: React.PointerEvent) => void;
   canvasScale: number;
 }
 
-const CanvasImageComponent: React.FC<CanvasImageProps> = ({
+const CanvasImageComponent: React.FC<CanvasImageProps> = memo(({
   id,
   src,
   x,
@@ -37,15 +40,21 @@ const CanvasImageComponent: React.FC<CanvasImageProps> = ({
   isSelectionMode,
   canEdit,
   isHandMode,
+  isEditing,
   onSelect,
   onToggleMultiSelect,
   onUpdate,
   onGroupDrag,
   onGroupDragEnd,
+  onInteraction,
   canvasScale,
 }) => {
   const [isResizing, setIsResizing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isActivated, setIsActivated] = useState(false);
+  const longPressTimerRef = useRef<any>(null);
+  const pointerDownTimeRef = useRef(0);
+  const wasSelectedAtPointerDown = useRef(false);
   const dragControls = useDragControls();
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -123,21 +132,66 @@ const CanvasImageComponent: React.FC<CanvasImageProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
     if (isResizing) return;
+    
+    pointerDownTimeRef.current = Date.now();
+    wasSelectedAtPointerDown.current = isSelected || isMultiSelected;
+
     if (isSelectionMode) {
-      if (isMultiSelected) {
-        dragControls.start(e);
-      } else {
+      if (!isMultiSelected) {
         onToggleMultiSelect(id);
       }
+      dragControls.start(e);
       return;
     }
+
     if (!isSelected && !isMultiSelected) {
-      onSelect();
+      onSelect(id);
     }
-    if (canEdit) {
-      dragControls.start(e);
+    
+    if (!isHandMode) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+      
+      // Iniciar timer de pulsación larga de 500ms
+      longPressTimerRef.current = setTimeout(() => {
+        setIsActivated(true);
+        onInteraction(e); // Esto activará setEditingImageId en el padre
+        
+        if (window.navigator?.vibrate) window.navigator.vibrate(50);
+        
+        // Start dragging only after long press is completed, unless multi-selected
+        if (!isHandMode) {
+          dragControls.start(e);
+        }
+      }, 500);
     }
+
+    // Drag immediately ONLY if multi-selected or already editing/active
+    if (isMultiSelected || isActivated || isEditing) {
+      if (!isHandMode) {
+        dragControls.start(e);
+      }
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (longPressTimerRef.current) {
+      // If we move too much before the timer triggers, cancel the long press
+      // Using a simple delta check - though we don't have start pos, we can just cancel on move
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handlePointerUp = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    setIsActivated(false);
   };
 
   const handleDragEnd = () => {
@@ -147,6 +201,30 @@ const CanvasImageComponent: React.FC<CanvasImageProps> = ({
     lastSentValues.current = { ...lastSentValues.current, x: finalX, y: finalY };
     onUpdate(id, { x: finalX, y: finalY });
   };
+
+  // High-performance group drag listener
+  useEffect(() => {
+    const handleGroupDragEvent = (e: any) => {
+      const { senderId, delta } = e.detail;
+      if (isMultiSelected && senderId !== id) {
+        mvX.set(mvX.get() + delta.x);
+        mvY.set(mvY.get() + delta.y);
+      }
+    };
+
+    const handleGroupDragEndEvent = () => {
+      if (isMultiSelected) {
+        handleDragEnd();
+      }
+    };
+
+    window.addEventListener('group-drag', handleGroupDragEvent);
+    window.addEventListener('group-drag-end', handleGroupDragEndEvent);
+    return () => {
+      window.removeEventListener('group-drag', handleGroupDragEvent);
+      window.removeEventListener('group-drag-end', handleGroupDragEndEvent);
+    };
+  }, [id, isMultiSelected, mvX, mvY]);
 
   return (
     <MotionConfig transformPagePoint={(point) => ({ x: point.x / canvasScale, y: point.y / canvasScale })}>
@@ -161,22 +239,34 @@ const CanvasImageComponent: React.FC<CanvasImageProps> = ({
           width: mvWidth,
           height: mvHeight,
           rotate: mvRotate,
-          zIndex: isSelected ? 1000 : zIndex,
-          touchAction: 'none',
+          zIndex: isEditing ? 1000 : zIndex,
+          touchAction: isEditing ? 'none' : 'auto',
           pointerEvents: isHandMode ? 'none' : 'auto',
+          cursor: isEditing ? 'move' : 'pointer'
         }}
-        drag={canEdit && !isResizing && !isHandMode}
+        drag={canEdit && (isEditing || isMultiSelected || isSelectionMode) && !isResizing && !isHandMode}
         dragControls={dragControls}
         dragListener={false}
         dragMomentum={false}
         dragElastic={0}
-        onDragStart={() => setIsDragging(true)}
-        onDrag={(event, info) => {
-          if (isMultiSelected) {
-            onGroupDrag(id, info.delta);
+        onDragStart={() => {
+          setIsDragging(true);
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
+          if (containerRef.current) {
+            containerRef.current.style.willChange = 'transform';
           }
         }}
+        onDrag={(event, info) => {
+          // Siempre notificamos el arrastre para sincronizar otros elementos seleccionados o dependientes
+          onGroupDrag(id, info.delta);
+        }}
         onDragEnd={() => {
+          if (containerRef.current) {
+            containerRef.current.style.willChange = 'auto';
+          }
           handleDragEnd();
           if (isMultiSelected) {
             window.dispatchEvent(new CustomEvent('group-drag-end'));
@@ -184,12 +274,62 @@ const CanvasImageComponent: React.FC<CanvasImageProps> = ({
           }
         }}
         onPointerDown={handlePointerDown}
-        onClick={(e) => e.stopPropagation()}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onClick={(e) => {
+          e.stopPropagation();
+          const isLongPress = Date.now() - pointerDownTimeRef.current > 500;
+          
+          if (isSelectionMode) {
+            if (!isLongPress && wasSelectedAtPointerDown.current) {
+              onToggleMultiSelect(id);
+            }
+            return;
+          }
+          if (!isEditing && !isSelectionMode && !isMultiSelected) {
+             onSelect(id);
+          }
+        }}
       >
+        {/* SUB-MENÚ DE ETIQUETAS (Flotante y forzado) */}
+        {isEditing && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="absolute -top-16 left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-white/20 p-2 rounded-2xl shadow-2xl z-[1003] flex items-center gap-2"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <button 
+              className="p-2 hover:bg-white/10 rounded-xl transition-colors"
+              onClick={() => {
+                // Trigger label editor in parent (handled by state in parent)
+                // We just need to make sure the parent knows we want to edit labels
+                // Since editingImageId is already set, the parent toolbar also works
+                window.dispatchEvent(new CustomEvent('toggle-image-label-editor'));
+              }}
+              title="Añadir Etiqueta"
+            >
+              <Tag size={18} className="text-[#FFD105]" />
+            </button>
+            <div className="w-px h-6 bg-white/10" />
+            <button 
+              className="p-2 hover:bg-red-500/20 rounded-xl transition-colors"
+              onClick={() => {
+                onUpdate(id, { _delete: true });
+              }}
+              title="Eliminar Imagen"
+            >
+              <Trash2 size={18} className="text-red-500" />
+            </button>
+          </motion.div>
+        )}
+
         <div
           className={`w-full h-full border-2 transition-colors overflow-hidden rounded-md flex flex-col ${
-            isSelected ? 'border-[#FFD105] shadow-lg' : 'border-transparent'
-          } ${isMultiSelected ? 'cuadro-seleccionado ring-4 ring-[#FFD105]' : ''}`}
+            isSelected || isMultiSelected ? 'border-[#FFD105] shadow-lg cuadro-seleccionado' : 'border-transparent'
+          }`}
         >
           <img 
             src={src} 
@@ -274,6 +414,6 @@ const CanvasImageComponent: React.FC<CanvasImageProps> = ({
       </motion.div>
     </MotionConfig>
   );
-};
+});
 
 export default CanvasImageComponent;

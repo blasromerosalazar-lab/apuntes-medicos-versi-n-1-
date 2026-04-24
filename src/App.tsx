@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   BookPlus, 
   Clock, 
@@ -11,7 +11,15 @@ import {
   Box,
   Diamond,
   AlertCircle,
-  X
+  X,
+  FolderSync,
+  MoreVertical,
+  Trash2,
+  Eye,
+  List,
+  CheckSquare,
+  Square,
+  FileDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import LienzoDeApuntes from './components/LienzoDeApuntes';
@@ -29,6 +37,116 @@ interface Subject {
   colorId: string;
   notes: Note[];
 }
+
+const AutoFileStorage = () => {
+  const [dirHandle, setDirHandle] = useState<any>(null);
+  const [status, setStatus] = useState<'IDLE' | 'SAVING' | 'ERROR'>('IDLE');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Intentar reconectar si ya se había dado permiso
+  useEffect(() => {
+    const initStorage = async () => {
+      // NOTE: FileSystemDirectoryHandle is not automatically restored across sessions without user interaction
+      // in most generic implementations, but we check flag. If future browser support handles persistent IDs, 
+      // we'd use idb-keyval. For now we wait for user click if handle is lost.
+    };
+    initStorage();
+  }, []);
+
+  // 1. Vincular carpeta (Solo se hace una vez)
+  const connectFolder = async () => {
+    try {
+      setErrorMsg(null);
+      const handle = await (window as any).showDirectoryPicker({
+        id: 'mednotes_backup',
+        mode: 'readwrite'
+      });
+      setDirHandle(handle);
+      localStorage.setItem('folder_linked', 'true');
+    } catch (err: any) {
+      console.error("Acceso denegado a la carpeta", err);
+      if (err.name === 'SecurityError' || err.message?.includes('Cross origin') || err.message?.includes('sub frames')) {
+        const msg = '⚠️ Para usar la sincronización local, debes abrir la aplicación en una pestaña nueva.\n\nHaz clic en el icono "Open in new tab" en la esquina superior derecha.';
+        alert(msg);
+        setErrorMsg('Debes abrir la app en una Pestaña Nueva para habilitar el guardado local.');
+      } else {
+        setErrorMsg('Acceso denegado o cancelado.');
+      }
+    }
+  };
+
+  // 2. Función de Guardado Automático Real
+  const performAutoSave = async (content: string, fileName: string) => {
+    if (!dirHandle) return;
+
+    setStatus('SAVING');
+    try {
+      // fileName is passed dynamically from the event
+      const fileHandle = await dirHandle.getFileHandle(`${fileName}.json`, { create: true });
+      const writable = await fileHandle.createWritable();
+      
+      const data = {
+        id: crypto.randomUUID(),
+        content: content,
+        lastUpdate: new Date().toISOString(),
+        device: "Redmi Pad SE"
+      };
+
+      await writable.write(JSON.stringify(data, null, 2));
+      await writable.close();
+      
+      setTimeout(() => setStatus('IDLE'), 1000);
+    } catch (error) {
+      console.error("Error en autosave:", error);
+      setStatus('ERROR');
+    }
+  };
+
+  // 3. Manejador de cambios (Debounce para fluidez) a través de evento global
+  useEffect(() => {
+    const handleAutoSaveRequest = (e: CustomEvent) => {
+      if (!dirHandle) return;
+      
+      const { content, fileName } = e.detail;
+      
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      
+      // Espera 800ms sin escribir para ejecutar el guardado físico
+      saveTimeoutRef.current = setTimeout(() => {
+        requestAnimationFrame(() => performAutoSave(content, fileName));
+      }, 800);
+    };
+
+    const handleConnectRequest = () => {
+      connectFolder();
+    };
+
+    window.addEventListener('request-auto-save', handleAutoSaveRequest as EventListener);
+    window.addEventListener('request-connect-folder', handleConnectRequest as EventListener);
+    return () => {
+      window.removeEventListener('request-auto-save', handleAutoSaveRequest as EventListener);
+      window.removeEventListener('request-connect-folder', handleConnectRequest as EventListener);
+    };
+  }, [dirHandle]);
+
+  return (
+    <div className="fixed bottom-[100px] right-4 flex flex-col items-end gap-2 z-[10000] pointer-events-none">
+      {errorMsg && (
+        <div className="pointer-events-auto bg-red-600/90 text-white text-xs p-3 rounded-lg max-w-[250px] shadow-lg backdrop-blur-md border border-red-400">
+          ⚠️ {errorMsg}
+          <button onClick={() => setErrorMsg(null)} className="ml-2 underline font-bold">OK</button>
+        </div>
+      )}
+      {dirHandle && (
+        <div className={`pointer-events-auto text-xs px-3 py-1.5 rounded-full shadow-lg ${status === 'SAVING' ? 'bg-[#FFD105] text-black' : 'bg-[#188A0B] text-white'} font-bold transition-colors`}>
+          {status === 'SAVING' ? '💾 Guardando en tablet...' : '✅ Sincronizado'}
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 const COLORS = [
   { 
@@ -79,15 +197,109 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'recientes' | 'materias' | '3d'>('materias');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const [isViewOnlyMode, setIsViewOnlyMode] = useState(false);
+  const [activeNoteMenu, setActiveNoteMenu] = useState<string | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportSelected = async () => {
+    if (selectedNoteIds.length === 0) return;
+    setIsExporting(true);
+    
+    const db = (window as any).db;
+    const exportResults = [];
+
+    try {
+      for (const noteId of selectedNoteIds) {
+        const noteInfo = selectedSubject?.notes.find(n => n.id === noteId);
+        if (!noteInfo) continue;
+
+        let noteContent = {
+          userNotes: '',
+          tasks: [],
+          textBoxes: [],
+          drawings: [],
+          lottieAnimations: [],
+          model3DAnimations: [],
+          canvasShapes: [],
+          images: [],
+          schemaNodes: []
+        };
+
+        // If DB exists, try to get full content
+        if (db?.notas) {
+          try {
+            const doc = await db.notas.get(noteId);
+            if (doc) {
+              noteContent = { ...noteContent, ...doc };
+            }
+          } catch (e) {
+            console.error(`Error loading note ${noteId} from DB:`, e);
+          }
+        }
+
+        exportResults.push({
+          id: noteId,
+          title: noteInfo.title,
+          ...noteContent
+        });
+      }
+
+      const exportData = {
+        app: "MedNotes_UCV",
+        exportType: "MULTI_EXPORT",
+        version: "1.0",
+        timestamp: new Date().toISOString(),
+        notesCount: exportResults.length,
+        notes: exportResults
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `MedNotes_Export_${selectedSubject?.name.replace(/\s+/g, '_')}_${new Date().getTime()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+
+      // Feedback visual
+      setIsSelectionMode(false);
+      setSelectedNoteIds([]);
+    } catch (err) {
+      console.error("Error al exportar múltiples notas:", err);
+      setError("Error al exportar las notas seleccionadas.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-guardado global de materias
+  useEffect(() => {
+    if (subjects.length > 0) {
+      window.dispatchEvent(new CustomEvent('request-auto-save', {
+        detail: {
+          content: subjects,
+          fileName: 'Catálogo_Materias'
+        }
+      }));
+    }
+  }, [subjects]);
 
   const handleCreateSubject = () => {
     try {
       if (!newSubjectName.trim()) return;
 
       const selectedColor = COLORS.find(c => c.id === selectedColorId);
+      const uuid = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       const newSubject: Subject = {
-        id: `subject-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        id: `subject-${uuid}`,
         name: newSubjectName.toUpperCase(),
         gradient: selectedColor?.gradient || COLORS[0].gradient,
         colorId: selectedColorId,
@@ -109,9 +321,10 @@ export default function App() {
 
       const updatedSubjects = subjects.map(s => {
         if (s.id === selectedSubjectId) {
+          const uuid = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
           return {
             ...s,
-            notes: [...s.notes, { id: `note-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, title: newNoteTitle.toUpperCase() }]
+            notes: [...s.notes, { id: `note-${uuid}`, title: newNoteTitle.toUpperCase() }]
           };
         }
         return s;
@@ -124,6 +337,18 @@ export default function App() {
       setError('No se pudo crear la nota. Por favor, inténtalo de nuevo.');
       console.error(err);
     }
+  };
+
+  const handleDeleteNote = (noteId: string) => {
+    setSubjects(prev => prev.map(s => {
+      const idx = s.notes.findIndex(n => n.id === noteId);
+      if (idx !== -1) {
+        const newNotes = [...s.notes];
+        newNotes.splice(idx, 1);
+        return { ...s, notes: newNotes };
+      }
+      return s;
+    }));
   };
 
   const selectedSubject = subjects.find(s => s.id === selectedSubjectId);
@@ -159,20 +384,28 @@ export default function App() {
     const colorConfig = COLORS.find(c => c.id === (subject?.colorId || 'cyan')) || COLORS[0];
 
     return (
-      <LienzoDeApuntes 
-        id={selectedNote.id}
-        title={selectedNote.title} 
-        color={colorConfig.color}
-        gradient={colorConfig.gradient}
-        onBack={() => setSelectedNote(null)} 
-      />
+      <>
+        <LienzoDeApuntes 
+          id={selectedNote.id}
+          title={selectedNote.title} 
+          color={colorConfig.color}
+          gradient={colorConfig.gradient}
+          isViewOnly={isViewOnlyMode}
+          onBack={() => {
+            setSelectedNote(null);
+            setIsViewOnlyMode(false);
+          }} 
+        />
+        <AutoFileStorage />
+      </>
     );
   }
 
   if (selectedSubjectId && selectedSubject) {
     return (
-      <div className="subject-detail-container">
-        <AnimatePresence>
+      <>
+        <div className="subject-detail-container">
+          <AnimatePresence>
           {error && (
             <motion.div 
               initial={{ opacity: 0, y: -50 }}
@@ -188,27 +421,138 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
-        <header className="subject-header">
-          <div className="back-button" onClick={() => setSelectedSubjectId(null)}>
-            <BookOpen className="w-8 h-8" />
+        <header className="w-full flex items-center justify-between px-6 h-[85px] sticky top-0 bg-[#060000] z-[50] border-b border-white/5 shadow-2xl">
+          <div className="flex items-center">
+            <div className="cursor-pointer hover:bg-white/10 p-3 rounded-full transition-all active:scale-90" onClick={() => {
+              setSelectedSubjectId(null);
+              setIsSelectionMode(false);
+              setSelectedNoteIds([]);
+            }}>
+              <BookOpen className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="ml-4 color-white font-istok text-[30px] font-black uppercase tracking-tighter truncate max-w-[150px] sm:max-w-md">{selectedSubject.name}</h1>
           </div>
-          <h1 className="subject-title ml-12">{selectedSubject.name}</h1>
+
+          <div className="flex items-center gap-3">
+            {isSelectionMode && selectedNoteIds.length > 0 && (
+              <motion.button 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={handleExportSelected}
+                disabled={isExporting}
+                className={`flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs sm:text-sm font-bold transition-all active:scale-95 shadow-xl ${isExporting ? 'opacity-50' : 'hover:bg-blue-700'}`}
+              >
+                <FileDown size={18} />
+                <span className="hidden sm:inline">{isExporting ? 'Exportando...' : `Exportar (${selectedNoteIds.length})`}</span>
+                <span className="sm:hidden">{selectedNoteIds.length}</span>
+              </motion.button>
+            )}
+            
+            <button 
+              onClick={() => {
+                setIsSelectionMode(!isSelectionMode);
+                setSelectedNoteIds([]);
+              }}
+              className={`w-[48px] h-[48px] rounded-full flex items-center justify-center transition-all border-2 active:scale-95 ${isSelectionMode ? 'bg-[#FFD105] border-[#FFD105] text-black' : 'bg-transparent border-white/40 text-white hover:border-white hover:bg-white/10'}`}
+              title="Selección Múltiple"
+              id="multi-select-trigger"
+            >
+              <MoreVertical size={24} />
+            </button>
+          </div>
         </header>
 
         <main className="notes-grid">
-          <AnimatePresence>
+          <AnimatePresence mode="popLayout">
+            {selectedSubject.notes.length === 0 && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="col-span-full py-20 text-center opacity-30"
+              >
+                <BookOpen size={48} className="mx-auto mb-4" />
+                <p className="text-white font-medium uppercase tracking-widest text-xs">Aún no hay notas en esta materia</p>
+              </motion.div>
+            )}
             {selectedSubject.notes.map((note) => (
               <motion.div
                 key={note.id}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="note-card lava-effect"
+                exit={{ opacity: 0, scale: 0.9 }}
+                layout
+                className={`note-card lava-effect relative ${isSelectionMode && selectedNoteIds.includes(note.id) ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-transparent' : ''}`}
                 style={getLavaStyle(selectedSubject.colorId)}
-                onClick={() => setSelectedNote(note)}
+                onClick={() => {
+                  if (isSelectionMode) {
+                    setSelectedNoteIds(prev => 
+                      prev.includes(note.id) 
+                        ? prev.filter(id => id !== note.id) 
+                        : [...prev, note.id]
+                    );
+                  } else {
+                    setSelectedNote(note);
+                  }
+                }}
               >
+                <div className="absolute top-[17px] right-3 z-20 flex items-center gap-2">
+                  {isSelectionMode ? (
+                    <div className="text-white">
+                      {selectedNoteIds.includes(note.id) ? (
+                        <CheckSquare className="w-6 h-6 text-blue-400 fill-blue-400/20" />
+                      ) : (
+                        <Square className="w-6 h-6 text-white/30" />
+                      )}
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveNoteMenu(activeNoteMenu === note.id ? null : note.id);
+                      }}
+                      className="p-1 hover:bg-white/20 rounded-full text-white transition-colors"
+                    >
+                      <MoreVertical size={20} />
+                    </button>
+                  )}
+                  
+                  <AnimatePresence>
+                    {!isSelectionMode && activeNoteMenu === note.id && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="absolute right-0 top-full mt-1 bg-[#232323] border border-white/10 rounded-xl shadow-xl overflow-hidden z-[100] min-w-[120px]"
+                      >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedNote(note);
+                            setIsViewOnlyMode(true);
+                            setActiveNoteMenu(null);
+                          }}
+                          className="flex items-center gap-3 w-full px-4 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors"
+                        >
+                          <Eye size={16} /> Visor
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteNote(note.id);
+                            setActiveNoteMenu(null);
+                          }}
+                          className="flex items-center gap-3 w-full px-4 py-3 text-sm font-medium text-red-500 hover:bg-white/10 transition-colors"
+                        >
+                          <Trash2 size={16} /> Borrar
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+                
                 <div className="card-content">
                   <Diamond className="note-icon fill-white text-white" />
-                  <span className="note-title">{note.title}</span>
+                  <span className="note-title pr-6">{note.title}</span>
                 </div>
               </motion.div>
             ))}
@@ -313,14 +657,26 @@ export default function App() {
               </motion.div>
             </div>
           </button>
+          
+          <button className="nav-item" onClick={() => window.dispatchEvent(new CustomEvent('request-connect-folder'))}>
+            <div className="relative flex flex-col items-center justify-center">
+              <div className="flex flex-col items-center justify-center text-white text-opacity-70 hover:text-opacity-100 transition-opacity">
+                <FolderSync className="nav-icon" />
+                <span className="nav-text">Sync Local</span>
+              </div>
+            </div>
+          </button>
         </nav>
       </div>
+      <AutoFileStorage />
+    </>
     );
   }
 
   return (
-    <div className="app-container">
-      <AnimatePresence>
+    <>
+      <div className="app-container">
+        <AnimatePresence>
         {error && (
           <motion.div 
             initial={{ opacity: 0, y: -50 }}
@@ -373,13 +729,57 @@ export default function App() {
                   key={note.id}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="recientes-card lava-effect"
+                  className="recientes-card lava-effect relative"
                   style={getLavaStyle(note.subjectColorId)}
                   onClick={() => setSelectedNote({ id: note.id, title: note.title })}
                 >
+                  <div className="absolute top-[17px] right-3 z-20">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveNoteMenu(activeNoteMenu === note.id ? null : note.id);
+                      }}
+                      className="p-1 hover:bg-white/20 rounded-full text-white transition-colors"
+                    >
+                      <MoreVertical size={20} />
+                    </button>
+                    
+                    <AnimatePresence>
+                      {activeNoteMenu === note.id && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          className="absolute right-0 top-full mt-1 bg-[#232323] border border-white/10 rounded-xl shadow-xl overflow-hidden z-[100] min-w-[120px]"
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedNote({ id: note.id, title: note.title });
+                              setIsViewOnlyMode(true);
+                              setActiveNoteMenu(null);
+                            }}
+                            className="flex items-center gap-3 w-full px-4 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors"
+                          >
+                            <Eye size={16} /> Visor
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteNote(note.id);
+                              setActiveNoteMenu(null);
+                            }}
+                            className="flex items-center gap-3 w-full px-4 py-3 text-sm font-medium text-red-500 hover:bg-white/10 transition-colors"
+                          >
+                            <Trash2 size={16} /> Borrar
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                   <div className="card-content">
                     <Diamond className="card-diamond" />
-                    <span className="card-title">{note.title}</span>
+                    <span className="card-title pr-6">{note.title}</span>
                   </div>
                 </motion.div>
               ))}
@@ -520,7 +920,20 @@ export default function App() {
             </motion.div>
           </div>
         </button>
+        <button 
+          className="nav-item"
+          onClick={() => window.dispatchEvent(new CustomEvent('request-connect-folder'))}
+        >
+          <div className="relative flex flex-col items-center justify-center">
+            <div className="flex flex-col items-center justify-center text-white text-opacity-70 hover:text-opacity-100 transition-opacity">
+              <FolderSync className="nav-icon" />
+              <span className="nav-text">Sync Local</span>
+            </div>
+          </div>
+        </button>
       </nav>
-    </div>
+      </div>
+      <AutoFileStorage />
+    </>
   );
 }

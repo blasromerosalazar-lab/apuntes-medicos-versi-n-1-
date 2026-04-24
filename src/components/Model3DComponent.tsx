@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, memo } from 'react';
 import { motion, useMotionValue, useDragControls, MotionConfig } from 'motion/react';
 import { GripVertical } from 'lucide-react';
 
@@ -20,7 +20,7 @@ interface Model3DProps {
   isMultiSelected: boolean;
   isSelectionMode: boolean;
   isHandMode: boolean;
-  onSelect: () => void;
+  onSelect: (id: string) => void;
   onToggleMultiSelect: (id: string) => void;
   onUpdate: (id: string, updates: any) => void;
   onGroupDrag: (id: string, delta: { x: number, y: number }) => void;
@@ -28,7 +28,7 @@ interface Model3DProps {
   canvasScale: number;
 }
 
-const Model3DComponent: React.FC<Model3DProps> = ({
+const Model3DComponent: React.FC<Model3DProps> = memo(({
   id,
   x,
   y,
@@ -136,6 +136,7 @@ const Model3DComponent: React.FC<Model3DProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
     if (isResizing || isHandMode) return;
 
     if (isSelectionMode) {
@@ -148,7 +149,7 @@ const Model3DComponent: React.FC<Model3DProps> = ({
     }
 
     if (!isSelected && !isMultiSelected) {
-      onSelect();
+      onSelect(id);
     }
     
     // We only start drag if clicking the handle or if in selection mode
@@ -198,7 +199,7 @@ const Model3DComponent: React.FC<Model3DProps> = ({
   return (
     <MotionConfig transformPagePoint={(point) => ({ x: point.x / canvasScale, y: point.y / canvasScale })}>
       <motion.div
-        className={`contenedor-3d-medico ${isSelected ? 'selected' : ''} ${isMultiSelected ? 'cuadro-seleccionado' : ''}`}
+        className={`contenedor-3d-medico ${isSelected || isMultiSelected ? 'cuadro-seleccionado' : ''}`}
         style={{
           position: 'absolute',
           left: 0,
@@ -225,9 +226,8 @@ const Model3DComponent: React.FC<Model3DProps> = ({
         dragMomentum={false}
         dragElastic={0}
         onDrag={(event, info) => {
-          if (isMultiSelected) {
-            onGroupDrag(id, info.delta);
-          }
+          // Siempre notificamos el arrastre para sincronizar otros elementos o líneas conectoras
+          onGroupDrag(id, info.delta);
         }}
         onDragEnd={() => {
           handleDragEnd();
@@ -241,7 +241,7 @@ const Model3DComponent: React.FC<Model3DProps> = ({
         <div 
           onPointerDown={(e) => {
             e.stopPropagation();
-            if (!isSelected && !isMultiSelected) onSelect();
+            if (!isSelected && !isMultiSelected) onSelect(id);
             dragControls.start(e);
           }}
           className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-6 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-full flex items-center justify-center cursor-move z-[60] shadow-sm hover:bg-white transition-colors"
@@ -395,6 +395,6 @@ const Model3DComponent: React.FC<Model3DProps> = ({
       </motion.div>
     </MotionConfig>
   );
-};
+});
 
 export default Model3DComponent;

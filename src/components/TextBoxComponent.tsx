@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, memo } from 'react';
 import { motion, useMotionValue, useDragControls, MotionConfig } from 'motion/react';
 
 interface TextBoxProps {
@@ -20,17 +20,18 @@ interface TextBoxProps {
   isMultiSelected: boolean;
   isSelectionMode: boolean;
   canEdit: boolean;
-  onSelect: () => void;
+  onSelect: (id: string) => void;
   onToggleMultiSelect: (id: string) => void;
   onUpdate: (id: string, updates: any) => void;
   onGroupDrag: (id: string, delta: { x: number, y: number }) => void;
   onGroupDragEnd: () => void;
   onEditingChange?: (isEditing: boolean) => void;
+  onLongPress?: (id: string) => void;
   canvasScale: number;
   isHandMode: boolean;
 }
 
-const TextBoxComponent: React.FC<TextBoxProps> = ({
+const TextBoxComponent: React.FC<TextBoxProps> = memo(({
   id,
   text,
   x,
@@ -56,6 +57,7 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
   onGroupDrag,
   onGroupDragEnd,
   onEditingChange,
+  onLongPress,
   canvasScale,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -66,6 +68,9 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
   const [isActivated, setIsActivated] = useState(false);
   const handlesTimerRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const downPosRef = useRef({ x: 0, y: 0 });
+  const pointerDownTimeRef = useRef(0);
+  const wasSelectedAtPointerDown = useRef(false);
   const dragControls = useDragControls();
   
   // Motion values for ultra-smooth updates - these are the source of truth for position and size
@@ -146,33 +151,68 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
     if (isResizing) return;
+    
+    pointerDownTimeRef.current = Date.now();
+    wasSelectedAtPointerDown.current = isSelected || isMultiSelected;
+
+    // Track long press for submenu (always tracked unless hand mode)
+    if (!isHandMode) {
+      downPosRef.current = { x: e.clientX, y: e.clientY };
+      
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+      
+      longPressTimerRef.current = setTimeout(() => {
+        setIsActivated(true);
+        if (onLongPress) {
+          onLongPress(id);
+        }
+      }, 500); // 500ms long press to activate submenu
+      
+      const clearLongPress = () => {
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      };
+      window.addEventListener('pointerup', clearLongPress, { once: true });
+      window.addEventListener('pointercancel', clearLongPress, { once: true });
+    }
 
     if (isSelectionMode) {
-      // If it's already selected, we might want to drag it instead of toggling
-      // But the request says click toggles. To allow dragging, we should only toggle if it's a "clean" click.
-      // However, Framer Motion dragControls.start(e) needs to be called.
-      if (isMultiSelected) {
-        // If already selected, allow dragging
-        dragControls.start(e);
-      } else {
-        // If not selected, toggle it
+      if (!isMultiSelected) {
         onToggleMultiSelect(id);
+      }
+      if (!isHandMode) {
+        dragControls.start(e);
       }
       return;
     }
 
     // Always select on pointer down if not already selected
     if (!isSelected && !isMultiSelected) {
-      onSelect();
+      onSelect(id);
     }
     
-    // Start dragging state
-    setIsActivated(true);
-    
-    // Trigger manual drag only if the text tool is active (canEdit)
-    if (canEdit) {
-      dragControls.start(e);
+    // Drag immediately ONLY if multi-selected, or already in edit mode (activated or globally editing AND selected)
+    if (isMultiSelected || isActivated || (canEdit && isSelected)) {
+      if (!isHandMode) {
+        dragControls.start(e);
+      }
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (longPressTimerRef.current) {
+      const dx = Math.abs(e.clientX - downPosRef.current.x);
+      const dy = Math.abs(e.clientY - downPosRef.current.y);
+      if (dx > 10 || dy > 10) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
     }
   };
 
@@ -183,6 +223,7 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    // Si no ha habido arrastre y se soltó el press, desactivar
     setIsActivated(false);
   };
 
@@ -365,16 +406,15 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
           touchAction: 'none',
           pointerEvents: isHandMode ? 'none' : 'auto',
         }}
-        drag={canEdit && !isResizing && !isHandMode}
+        drag={!isResizing && !isHandMode && ((canEdit && isSelected) || isSelectionMode || isMultiSelected)}
         dragControls={dragControls}
         dragListener={false}
         dragMomentum={false}
         dragElastic={0}
         onDragStart={() => setIsDragging(true)}
         onDrag={(event, info) => {
-          if (isMultiSelected) {
-            onGroupDrag(id, info.delta);
-          }
+          // Siempre notificamos el arrastre para sincronizar otros elementos o líneas conectoras
+          onGroupDrag(id, info.delta);
         }}
         onDragEnd={() => {
           handleDragEnd();
@@ -384,10 +424,20 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
           }
         }}
         onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
         onClick={(e) => {
           e.stopPropagation();
+          const isLongPress = Date.now() - pointerDownTimeRef.current > 500;
+          
+          if (isSelectionMode) {
+            if (!isLongPress && wasSelectedAtPointerDown.current) {
+              onToggleMultiSelect(id);
+            }
+            return;
+          }
+          
           // If the text tool is active (canEdit), enter edit mode on single click
           if (canEdit && !isDragging && !isEditing) {
             setIsEditing(true);
@@ -395,9 +445,11 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
         }}
       >
         <div
-          className={`w-full h-full p-2 border-2 transition-colors rounded-sm flex flex-col ${
-            isSelected ? 'border-[#FFD105] bg-white/5 shadow-sm' : 'border-transparent bg-transparent'
-          } ${isSelected && canEdit ? 'cursor-move' : ''} ${isMultiSelected ? 'cuadro-seleccionado' : ''} ${isDragging && isMultiSelected ? 'grabbed' : ''}`}
+          className={`w-full h-full p-2 border-2 transition-all duration-200 rounded-sm flex flex-col ${
+            isSelected || isMultiSelected ? 'border-[#FFD105] bg-white/5 shadow-sm cuadro-seleccionado' : 'border-transparent bg-transparent'
+          } ${isSelected && canEdit ? (isActivated ? 'cursor-move' : 'cursor-text') : ''} ${isDragging && isMultiSelected ? 'grabbed' : ''} ${
+            isActivated ? 'scale-[1.02] shadow-md border-[#FFD105] bg-white/10' : 'scale-100'
+          }`}
           onDoubleClick={(e) => {
             if (isSelectionMode) return;
             e.stopPropagation();
@@ -518,6 +570,6 @@ const TextBoxComponent: React.FC<TextBoxProps> = ({
       </motion.div>
     </MotionConfig>
   );
-};
+});
 
 export default TextBoxComponent;

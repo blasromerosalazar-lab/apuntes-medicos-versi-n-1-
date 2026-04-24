@@ -5,6 +5,8 @@ import TextBoxComponent from './TextBoxComponent';
 import CanvasImageComponent from './CanvasImageComponent';
 import LottieComponent from './LottieComponent';
 import Model3DComponent from './Model3DComponent';
+import SchemaNodeComponent from './SchemaNodeComponent';
+import CanvasShapeComponent from './CanvasShapeComponent';
 import { 
   Type, 
   Trash2, 
@@ -82,6 +84,7 @@ import {
   Send,
   Loader2,
   BoxSelect,
+  Network,
   MoreVertical,
   FileText,
   FileUp,
@@ -103,7 +106,8 @@ import {
   CircleDot,
   CheckSquare,
   Tag,
-  AlertTriangle
+  AlertTriangle,
+  Download
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { jsPDF } from "jspdf";
@@ -127,6 +131,7 @@ interface LienzoDeApuntesProps {
   title: string;
   color: string;
   gradient: string;
+  isViewOnly?: boolean;
   onBack: () => void;
 }
 
@@ -214,6 +219,7 @@ interface SchemaNode {
   underline?: boolean;
   strikethrough?: boolean;
   align?: 'left' | 'center' | 'right';
+  schemaId?: string;
 }
 
 interface CanvasImageLabel {
@@ -274,6 +280,7 @@ interface LayoutAsset {
   fontStyle?: 'normal' | 'italic';
   borderWidth?: number;
   borderColor?: string;
+  shapeType?: string;
 }
 
 // --- Fabric.js Layout Implementation (High Performance Interaction) ---
@@ -288,6 +295,7 @@ interface FabricLayoutSheetProps {
   onDeleteAsset: (id: string) => void;
   textBoxes: TextBox[];
   images: CanvasImage[];
+  schemaNodes: SchemaNode[];
 }
 
 const FabricLayoutSheet: React.FC<FabricLayoutSheetProps> = ({ 
@@ -299,7 +307,8 @@ const FabricLayoutSheet: React.FC<FabricLayoutSheetProps> = ({
   selectedAssetId,
   onDeleteAsset,
   textBoxes,
-  images
+  images,
+  schemaNodes
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -516,8 +525,65 @@ const FabricLayoutSheet: React.FC<FabricLayoutSheetProps> = ({
               strokeDashArray: [5, 5]
             });
           }
+        } else if (asset.type === 'schema') {
+           // Fallback if individual schema nodes are still used
+           const realNodeId = asset.id.split('_')[0];
+           const realNode = schemaNodes.find(n => n.id === realNodeId);
+           obj = new fabric.Textbox(realNode?.text || '', {
+             left, top, width,
+             fontSize: 14,
+             fontFamily: 'Inter',
+             textAlign: realNode?.align || 'center',
+             fontWeight: realNode?.bold ? 'bold' : 'normal',
+             fontStyle: realNode?.italic ? 'italic' : 'normal',
+             fill: '#ffffff',
+             backgroundColor: realNode?.color || '#8e44ad',
+             padding: 10,
+             rx: 10,
+             ry: 10,
+             splitByGrapheme: true,
+             hasBorders: true,
+             hasControls: true,
+             cornerSize: 24,
+             cornerColor: '#FFD105',
+             cornerStyle: 'circle',
+             borderColor: '#FFD105',
+             lockScalingFlip: true,
+           });
+        } else if (asset.type === 'shape') {
+           const common = {
+             left, top, width, height,
+             fill: asset.color || '#FFD105',
+             stroke: asset.borderColor || '#000000',
+             strokeWidth: asset.borderWidth || 2,
+             hasBorders: true,
+             hasControls: true,
+             padding: 5,
+             cornerSize: 24,
+             cornerColor: '#FFD105',
+             cornerStyle: 'circle' as const,
+             borderColor: '#FFD105',
+             lockScalingFlip: true,
+           };
+
+           if (asset.shapeType === 'circle' || asset.shapeType === 'sphere') {
+             obj = new fabric.Ellipse({
+               ...common,
+               rx: width / 2,
+               ry: height / 2
+             });
+           } else if (asset.shapeType === 'triangle') {
+             obj = new fabric.Triangle({
+               ...common,
+             });
+           } else {
+             obj = new fabric.Rect({
+               ...common,
+               rx: 4, ry: 4
+             });
+           }
         } else {
-           // Fallback for schema
+           // Fallback for other types
            obj = new fabric.Rect({
              left, top, width, height,
              fill: '#f0f0f0',
@@ -578,8 +644,62 @@ const FabricLayoutSheet: React.FC<FabricLayoutSheetProps> = ({
       }
     });
 
+    // Draw connections between schema nodes IF both are on the same page
+    const drawConnections = () => {
+      // Logic for individual schema nodes connections (fallback)
+      const pageSchemaAssets = assets.filter(a => a.type === 'schema');
+      if (pageSchemaAssets.length === 0) return;
+      
+      const originalToInstance = new Map<string, string>();
+      pageSchemaAssets.forEach(a => {
+        const originalId = a.id.split('_')[0];
+        originalToInstance.set(originalId, a.id);
+      });
+
+      pageSchemaAssets.forEach(asset => {
+        const originalId = asset.id.split('_')[0];
+        const originalNode = schemaNodes.find(n => n.id === originalId);
+        if (!originalNode || !originalNode.parentId) return;
+
+        // Check if parent is also on this page
+        const parentInstanceId = originalToInstance.get(originalNode.parentId);
+        if (parentInstanceId) {
+          const parentAsset = pageSchemaAssets.find(a => a.id === parentInstanceId);
+          if (!parentAsset) return;
+
+          // Convert A4 mm coords to canvas pixels
+          const x1 = (parentAsset.x + parentAsset.width / 2) * (595 / 210);
+          const y1 = (parentAsset.y + parentAsset.height / 2) * (842 / 297);
+          const x2 = (asset.x + asset.width / 2) * (595 / 210);
+          const y2 = (asset.y + asset.height / 2) * (842 / 297);
+
+          const line = new fabric.Line([x1, y1, x2, y2], {
+            stroke: originalNode.color || '#8e44ad',
+            strokeWidth: 2,
+            selectable: false,
+            evented: false,
+            opacity: 0.6,
+          });
+          
+          // We add connections to the bottom of the stack
+          canvas.add(line);
+          canvas.sendObjectToBack(line);
+        }
+      });
+    };
+
+    // We only want to draw connections after all objects are added
+    // Clear old connections first (they won't have IDs or special markers, but we can tag them)
+    canvas.getObjects().forEach(obj => {
+      if (obj instanceof fabric.Line && !obj.get('data-id')) {
+        canvas.remove(obj);
+      }
+    });
+    
+    drawConnections();
+
     canvas.requestRenderAll();
-  }, [assets, selectedAssetId, textBoxes, images]);
+  }, [assets, selectedAssetId, textBoxes, images, schemaNodes]);
 
   return (
     <div 
@@ -619,11 +739,11 @@ const SHAPE_PALETTE = [
 
 let idCounter = 0;
 const generateId = (prefix: string = '') => {
-  idCounter += 1;
-  return `${prefix}${Date.now()}-${idCounter}-${Math.random().toString(36).substring(2, 9)}`;
+  const uuid = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  return `${prefix}${uuid}`;
 };
 
-const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gradient, onBack }) => {
+const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gradient, isViewOnly = false, onBack }) => {
   const [showTextMenu, setShowTextMenu] = useState(false);
   const [showStylePanel, setShowStylePanel] = useState(false);
   const [showIconsPanel, setShowIconsPanel] = useState(false);
@@ -694,16 +814,16 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isVectorizing, setIsVectorizing] = useState(false);
   const [isHandMode, setIsHandMode] = useState(false);
-  const [selectedBoxIds, setSelectedBoxIds] = useState<string[]>([]);
-  const [selectedLottieIds, setSelectedLottieIds] = useState<string[]>([]);
-  const [selectedModel3DIds, setSelectedModel3DIds] = useState<string[]>([]);
-  const [selectedDrawingIds, setSelectedDrawingIds] = useState<string[]>([]);
+  const [globalSelectedIds, setGlobalSelectedIds] = useState<string[]>([]);
   const [canvasShapes, setCanvasShapes] = useState<CanvasShape[]>([]);
   const [images, setImages] = useState<CanvasImage[]>([]);
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
-  const [selectedShapeIds, setSelectedShapeIds] = useState<string[]>([]);
-  const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
+  const [transformGroupId, setTransformGroupId] = useState<string | null>(null);
+
+  // ID de grupo único para persistencia de sesiones de movimiento coordinado
+  const groupId = useMemo(() => crypto.randomUUID(), [globalSelectedIds]);
+
   const [editingCanvasShapeId, setEditingCanvasShapeId] = useState<string | null>(null);
   const [editingImageId, setEditingImageId] = useState<string | null>(null);
   const [showImageLabelEditor, setShowImageLabelEditor] = useState(false);
@@ -764,6 +884,27 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
   const [cropBox, setCropBox] = useState({ x: 50, y: 50, width: 250, height: 150 });
   const [medScanCropBoxes, setMedScanCropBoxes] = useState<{x: number, y: number, width: number, height: number}[]>([]);
   
+  // Guardado Automático para AutoFileStorage
+  useEffect(() => {
+    const backupData = {
+      textBoxes,
+      lottieAnimations,
+      model3DAnimations,
+      drawings,
+      canvasShapes,
+      images,
+      schemaNodes
+    };
+    
+    // El evento será atrapado por AutoFileStorage que tiene su propio debounce de 800ms
+    window.dispatchEvent(new CustomEvent('request-auto-save', {
+      detail: {
+        content: backupData,
+        fileName: `Nota_${(title || 'Sin-Titulo').replace(/\s+/g, '_')}_${id}`
+      }
+    }));
+  }, [textBoxes, lottieAnimations, model3DAnimations, drawings, canvasShapes, images, schemaNodes, title, id]);
+
   // Infinite Canvas State
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
@@ -779,6 +920,63 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
   const wasDragging = useRef(false);
   const pauseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastPointerPosRef = useRef<{ x: number, y: number } | null>(null);
+  const lastTapRef = useRef<number>(0);
+  const schemaLongPressTimerRef = useRef<any>(null);
+
+  const handleSchemaInteraction = (e: React.PointerEvent, schemaId: string, nodeId: string) => {
+    const now = Date.now();
+    const LONG_PRESS_DELAY = 1000;
+
+    // Clear any existing long press timer
+    if (schemaLongPressTimerRef.current) {
+      clearTimeout(schemaLongPressTimerRef.current);
+    }
+
+    // Iniciar timer para LONG PRESS (1000ms)
+    schemaLongPressTimerRef.current = setTimeout(() => {
+      // Find all nodes that belong to this schema (either by schemaId or being the root)
+      const fullSchema = schemaNodes.filter(item => item.schemaId === schemaId || item.id === schemaId);
+      const schemaIds = fullSchema.map(item => item.id);
+      
+      setGlobalSelectedIds(prev => {
+        // En modo selección o si ya hay elementos seleccionados, sumamos los IDs del esquema
+        if (isSelectionMode || prev.length > 0) {
+          const newSelection = [...prev];
+          schemaIds.forEach(sid => {
+            if (!newSelection.includes(sid)) newSelection.push(sid);
+          });
+          return newSelection;
+        }
+        // Si no hay nada seleccionado y no estamos en modo selección, reemplazamos por el esquema completo
+        return schemaIds;
+      });
+
+      setTransformGroupId(crypto.randomUUID());
+      setIsSelectionMode(true); // Permitir movimiento grupal
+      if (window.navigator.vibrate) window.navigator.vibrate(50);
+      window.requestAnimationFrame(() => console.log("Schema Group selected via Long Press"));
+    }, LONG_PRESS_DELAY);
+
+    lastTapRef.current = now;
+  };
+
+  const handleImageInteraction = (id: string, e: React.PointerEvent) => {
+    if (!id) return;
+    if (globalSelectedIds.length <= 1) {
+      setEditingImageId(id);
+      setSelectedImageId(id);
+    }
+
+    window.requestAnimationFrame(() => console.log("Image sub-menu activated via Long Press (1200ms)"));
+    return null;
+  };
+
+  const handleCancelSchemaInteraction = () => {
+    if (schemaLongPressTimerRef.current) {
+      clearTimeout(schemaLongPressTimerRef.current);
+      schemaLongPressTimerRef.current = null;
+    }
+  };
 
   // Cleanup PDF rendering on unmount
   useEffect(() => {
@@ -919,10 +1117,129 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
     saveSidebarData(userNotes, newTasks);
   };
 
+  const handleSingleExport = async () => {
+    const exportData = {
+      app: "MedNotes_UCV",
+      exportType: "SINGLE_NOTE",
+      version: "1.0",
+      timestamp: new Date().toISOString(),
+      note: {
+        id: id,
+        title: title,
+        content: userNotes,
+        tasks: tasks,
+        textBoxes: textBoxes,
+        drawings: drawings,
+        lottieAnimations: lottieAnimations,
+        model3DAnimations: model3DAnimations,
+        canvasShapes: canvasShapes,
+        images: images,
+        schemaNodes: schemaNodes
+      }
+    };
+
+    try {
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `MedNote_${title.replace(/\s+/g, '_')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Limpieza de memoria para la Redmi Pad SE
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+    } catch (err) {
+      console.error("Error al exportar nota:", err);
+    }
+  };
+
   const handleDeleteTask = (taskId: string) => {
     const newTasks = tasks.filter(t => t.id !== taskId);
     setTasks(newTasks);
     saveSidebarData(userNotes, newTasks);
+  };
+
+  // Función para unificar el esquema en una sola pieza completa antes de la importación
+  const exportarEsquemaUnificado = async (rootId: string, elementos: SchemaNode[]) => {
+    if (elementos.length === 0) return null;
+
+    // 1. Calcular el Bounding Box (contenedor) de todas las piezas
+    const minX = Math.min(...elementos.map(el => el.x)) - 20;
+    const minY = Math.min(...elementos.map(el => el.y)) - 20;
+    const maxX = Math.max(...elementos.map(el => el.x + (el.width || 100))) + 20;
+    const maxY = Math.max(...elementos.map(el => el.y + (el.height || 40))) + 20;
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    // 2. Crear un Canvas temporal para "aplanar" el esquema
+    const offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = width;
+    offscreenCanvas.height = height;
+    const ctx = offscreenCanvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Dibujar conexiones primero (debajo de los nodos)
+    elementos.forEach(node => {
+      if (node.parentId) {
+        const parent = elementos.find(n => n.id === node.parentId);
+        if (parent) {
+          ctx.beginPath();
+          ctx.moveTo(parent.x + parent.width / 2 - minX, parent.y + parent.height / 2 - minY);
+          ctx.lineTo(node.x + node.width / 2 - minX, node.y + node.height / 2 - minY);
+          ctx.strokeStyle = node.color || '#8e44ad';
+          ctx.lineWidth = 3;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+        }
+      }
+    });
+
+    // Dibujar nodos
+    elementos.forEach(node => {
+      const relX = node.x - minX;
+      const relY = node.y - minY;
+      
+      // Caja del nodo
+      ctx.fillStyle = node.color || '#8e44ad';
+      const radius = 10;
+      ctx.beginPath();
+      // @ts-ignore
+      if (ctx.roundRect) { ctx.roundRect(relX, relY, node.width, node.height, radius); }
+      else { ctx.rect(relX, relY, node.width, node.height); }
+      ctx.fill();
+
+      // Texto del nodo
+      ctx.fillStyle = '#ffffff';
+      const fontSize = 14;
+      ctx.font = `${node.bold ? 'bold ' : ''}${node.italic ? 'italic ' : ''}${fontSize}px Inter, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      const lines = node.text.split('\n');
+      const lineHeight = fontSize * 1.2;
+      const startY = relY + node.height / 2 - ((lines.length - 1) * lineHeight) / 2;
+      
+      lines.forEach((line, i) => {
+        ctx.fillText(line, relX + node.width / 2, startY + i * lineHeight);
+      });
+    });
+    
+    // 4. Retornar como una sola pieza completa con ID único
+    return {
+      id: `unified-schema-${crypto.randomUUID()}`,
+      type: 'image' as const,
+      content: offscreenCanvas.toDataURL('image/png'),
+      width: width,
+      height: height,
+      isUnified: true
+    };
   };
 
   const prepararYMostrarMaquetador = async () => {
@@ -969,22 +1286,67 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
       });
     });
 
-    // Process schema nodes
-    schemaNodes.forEach(node => {
+    // Process schema nodes as unified pieces
+    const roots = schemaNodes.filter(n => !n.parentId);
+    const obtenerFamilia = (rootId: string, all: SchemaNode[]): SchemaNode[] => {
+      const family: SchemaNode[] = [];
+      const stack = [rootId];
+      const visited = new Set();
+      while (stack.length > 0) {
+        const id = stack.pop()!;
+        if (visited.has(id)) continue;
+        visited.add(id);
+        const node = all.find(n => n.id === id);
+        if (node) {
+          family.push(node);
+          all.filter(n => n.parentId === id).forEach(c => stack.push(c.id));
+        }
+      }
+      return family;
+    };
+
+    for (const root of roots) {
+      const family = obtenerFamilia(root.id, schemaNodes);
+      const unified = await exportarEsquemaUnificado(root.id, family);
+      if (unified) {
+        assets.push({
+          id: unified.id,
+          type: 'image',
+          thumbnail: unified.content,
+          originalWidth: unified.width,
+          originalHeight: unified.height,
+          width: 120,
+          height: (unified.height / unified.width) * 120,
+          x: 10,
+          y: 10,
+          scale: 1,
+          rotation: 0,
+          pageIndex: 0,
+          placed: false
+        });
+      }
+    }
+
+    // Process shapes
+    canvasShapes.forEach(shape => {
       assets.push({
-        id: node.id,
-        type: 'schema',
-        thumbnail: node.text,
-        originalWidth: node.width,
-        originalHeight: node.height,
-        width: 80,
-        height: 80,
+        id: shape.id,
+        type: 'shape',
+        thumbnail: '', 
+        originalWidth: shape.width,
+        originalHeight: shape.height,
+        width: 60,
+        height: 60,
         x: 10,
         y: 10,
         scale: 1,
-        rotation: 0,
+        rotation: shape.rotation || 0,
         pageIndex: 0,
-        placed: false
+        placed: false,
+        color: shape.fillColor,
+        borderColor: shape.borderColor,
+        shapeType: shape.type,
+        borderWidth: 2
       });
     });
 
@@ -1330,60 +1692,50 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
   };
 
   const handleSelectionImport = async (type: 'text' | 'image') => {
+    // 1. Validaciones de seguridad (Evita los errores de consola)
     if (!selectionRect || !pdfPageRef.current) return;
 
     const generateId = (prefix: string) => `${prefix}${Date.now()}`;
     
-    // Obtener el viewport visual (escala actual) para la conversión de coordenadas
-    const visualViewport = pdfPageRef.current.getViewport({ scale: pdfViewScale });
-    
-    // Convertir las coordenadas del recuadro de pantalla (píxeles) a coordenadas PDF (puntos)
-    // Coordenadas normalizadas del recuadro
-    const startX = selectionRect.x;
-    const startY = selectionRect.y;
-    const endX = selectionRect.x + selectionRect.width;
-    const endY = selectionRect.y + selectionRect.height;
-
-    // PDF.js convertToPdfPoint: (0,0) es la esquina inferior izquierda en PDF points
-    const pdfPoint1 = visualViewport.convertToPdfPoint(startX, startY);
-    const pdfPoint2 = visualViewport.convertToPdfPoint(endX, endY);
-
-    // Definir los límites en el sistema del PDF
-    const minX = Math.min(pdfPoint1[0], pdfPoint2[0]);
-    const maxX = Math.max(pdfPoint1[0], pdfPoint2[0]);
-    const minY = Math.min(pdfPoint1[1], pdfPoint2[1]);
-    const maxY = Math.max(pdfPoint1[1], pdfPoint2[1]);
-
-    // Rectángulo para procesamiento de imagen (unidades PDF 1:1)
-    const rect = {
-      x: Math.min(selectionRect.x, selectionRect.x + selectionRect.width) / pdfViewScale,
-      y: Math.min(selectionRect.y, selectionRect.y + selectionRect.height) / pdfViewScale,
-      w: Math.abs(selectionRect.width) / pdfViewScale,
-      h: Math.abs(selectionRect.height) / pdfViewScale
-    };
+    // Mantenemos la lógica de feedback visual
+    setSelectionOperationRunning(type);
 
     try {
+      // 2. Obtener el viewport actual (esencial para la precisión de coordenadas visuales)
+      const visualViewport = pdfPageRef.current.getViewport({ scale: pdfViewScale });
+
       if (type === 'text') {
         const textContent = await pdfPageRef.current.getTextContent();
         
-        // Filtrar ítems con precisión matemática usando el sistema de coordenadas nativo del PDF
+        // 3. Conversión precisa de coordenadas (Pantalla -> PDF Points)
+        const p1 = visualViewport.convertToPdfPoint(selectionRect.x, selectionRect.y);
+        const p2 = visualViewport.convertToPdfPoint(selectionRect.x + selectionRect.width, selectionRect.y + selectionRect.height);
+
+        const bounds = {
+          minX: Math.min(p1[0], p2[0]),
+          maxX: Math.max(p1[0], p2[0]),
+          minY: Math.min(p1[1], p2[1]),
+          maxY: Math.max(p1[1], p2[1])
+        };
+
+        // 4. Filtrado de texto exacto
         const extractedText = (textContent.items as any[])
           .filter((item: any) => {
             const x = item.transform[4];
             const y = item.transform[5];
-            // Verificamos si el punto de origen del texto está dentro de nuestra selección PDF
-            // Tolerancia de 2pt/5pt para asegurar capturas en bordes
-            return x >= minX - 2 && x <= maxX + 2 && y >= minY - 5 && y <= maxY + 5;
+            // Tolerancia de 2pt para bordes
+            return x >= bounds.minX - 2 && x <= bounds.maxX + 2 && y >= bounds.minY - 2 && y <= bounds.maxY + 2;
           })
           .map((item: any) => item.str)
           .join(' ')
           .replace(/\s+/g, ' ')
           .trim();
 
+        // Actualizamos el buffer de la barra lateral
         setPdfSelectionBuffer(prev => [...prev, {
           id: generateId('txt-'),
           type: 'text',
-          content: extractedText || selectedNativeText || "No se detectó texto en el área delimitada.",
+          content: extractedText || "No se detectó texto en el área.",
           page: pdfCurrentPage,
           width: Math.abs(selectionRect.width),
           height: Math.abs(selectionRect.height)
@@ -1395,16 +1747,24 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
         const highResViewport = pdfPageRef.current.getViewport({ scale: renderScale });
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        // Coordenadas normalizadas a escala 1.0x para el renderizado parcial
+        const rect1x = {
+          x: Math.min(selectionRect.x, selectionRect.x + selectionRect.width) / pdfViewScale,
+          y: Math.min(selectionRect.y, selectionRect.y + selectionRect.height) / pdfViewScale,
+          w: Math.abs(selectionRect.width) / pdfViewScale,
+          h: Math.abs(selectionRect.height) / pdfViewScale
+        };
         
-        canvas.width = rect.w * renderScale;
-        canvas.height = rect.h * renderScale;
+        canvas.width = rect1x.w * renderScale;
+        canvas.height = rect1x.h * renderScale;
 
         if (ctx) {
-          // Renderizamos la porción específica a escala 3.0x para máxima nitidez
+          // Renderizamos la porción específica a alta escala
           await pdfPageRef.current.render({
             canvasContext: ctx,
             viewport: highResViewport,
-            transform: [1, 0, 0, 1, -rect.x * renderScale, -rect.y * renderScale]
+            transform: [1, 0, 0, 1, -rect1x.x * renderScale, -rect1x.y * renderScale]
           }).promise;
         }
 
@@ -1417,18 +1777,15 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
           height: Math.abs(selectionRect.height)
         }]);
       }
-
-      // Finalizar operación y limpiar recuadro
-      setSelectionOperationRunning(type);
+    } catch (err) {
+      console.error("Error en la extracción:", err);
+    } finally {
+      // 5. Mantenemos el mismo comportamiento de cierre e interactividad
       setTimeout(() => {
         setSelectionOperationRunning(null);
         setSelectionRect(null);
         setSelectedNativeText('');
       }, 800);
-
-    } catch (err) {
-      console.error("Fallo en la extracción:", err);
-      setSelectionOperationRunning(null);
     }
   };
 
@@ -1565,13 +1922,55 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
     }
   }, []);
 
+  useEffect(() => {
+    const handleToggleLabelEditor = () => {
+      if (editingImageId) {
+        setShowImageLabelEditor(prev => !prev);
+      }
+    };
+    window.addEventListener('toggle-image-label-editor', handleToggleLabelEditor);
+    return () => window.removeEventListener('toggle-image-label-editor', handleToggleLabelEditor);
+  }, [editingImageId]);
+
   const handleCanvasClick = (e: React.MouseEvent) => {
     if (wasDragging.current || isHandMode) return;
     
+    // Check if we clicked the background
+    const isBackground = e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'CANVAS' || (e.target as HTMLElement).tagName === 'svg' || (e.target as HTMLElement).className?.includes?.('fabric-sheet-container');
+
+    if (isBackground) {
+      setGlobalSelectedIds([]);
+      setEditingDrawingIds([]);
+      setSelectedPointIndex(null);
+      setSelectedDrawingIdForPoint(null);
+      setSelectedBoxId(null);
+      setSelectedLottieId(null);
+      setSelectedModel3DId(null);
+      setSelectedDrawingId(null);
+      setSelectedShapeId(null);
+      setSelectedImageId(null);
+      setSelectedSchemaNodeId(null);
+      setEditingSchemaNodeId(null);
+      setEditingImageId(null);
+      setEditingCanvasShapeId(null);
+      
+      setTransformGroupId(null);
+      setShowTextMenu(false);
+      setShowCanvasShapesPanel(false);
+      setShowMediaMenu(false);
+      
+      if (isSelectionMode) {
+        if (e.detail === 2) {
+          setIsSelectionMode(false);
+        }
+      }
+      return;
+    }
+
     if (isSelectionMode) {
       // Check for double click to deselect
       if (e.detail === 2) {
-        setSelectedBoxIds([]);
+        setGlobalSelectedIds([]);
       }
       return;
     }
@@ -1580,7 +1979,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
       // Get coordinates relative to the canvas container
       const rect = containerRef.current?.getBoundingClientRect();
       if (rect) {
-        // Selection auto-clear on background click (handled by handlePointerDown)
+        // Selection auto-clear on background click (handled above)
       }
     } else {
       setSelectedBoxId(null);
@@ -1597,10 +1996,8 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
     const isNavigationMode = !showTextMenu && !selectedBoxId && !showLinesMenu;
 
     if (isBackground) {
-      setEditingDrawingIds([]);
-      setSelectedPointIndex(null);
-      setSelectedDrawingIdForPoint(null);
-      // Only clear selection, don't turn off the mode itself
+      // We don't clear selections here anymore to avoid closing windows during pan/zoom interaction
+      // Clearing logic is moved to handleCanvasClick for clean taps only
     } else if (isVectorizing) {
       // If we clicked something that is NOT background but we are in vectorizing mode,
       // we should check if we clicked a drawing. 
@@ -1806,7 +2203,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
       const dx = e.clientX - prevPos.x;
       const dy = e.clientY - prevPos.y;
 
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
         wasDragging.current = true;
       }
 
@@ -1979,9 +2376,31 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
         return { bold: false, italic: false, underline: false };
       });
     }
-  }, [selectedBoxId, textBoxes, currentFontSize]);
+  }, [selectedBoxId, textBoxes]); // removed currentFontSize from dependencies to prevent self-triggering loop
 
-  const FONT_SIZES = Array.from({ length: 35 }, (_, i) => 12 + i * 2);
+  const FONT_SIZES = [
+    8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 
+    31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 
+    64, 68, 72, 80, 88, 96, 104, 112, 120, 140, 160, 200
+  ];
+
+  useEffect(() => {
+    if (showFontSizePanel && fontSizePanelRef.current) {
+      setTimeout(() => {
+        if (!fontSizePanelRef.current) return;
+        const selectedButton = fontSizePanelRef.current.querySelector('.text-wrapper.text-2xl') as HTMLElement;
+        if (selectedButton) {
+          const buttonContainer = selectedButton.closest('button');
+          if (buttonContainer) {
+            fontSizePanelRef.current.scrollTo({
+              left: buttonContainer.offsetLeft - fontSizePanelRef.current.offsetWidth / 2 + buttonContainer.offsetWidth / 2,
+              behavior: 'auto'
+            });
+          }
+        }
+      }, 50);
+    }
+  }, [showFontSizePanel, currentFontSize]);
 
   const fontSizePanelRef = useRef<HTMLDivElement>(null);
   const isDraggingFontSize = useRef(false);
@@ -2120,7 +2539,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
           onClick={(e) => {
             e.stopPropagation();
             if (isSelectionMode) {
-              setSelectedDrawingIds(prev => prev.includes(drawing.id) ? prev.filter(id => id !== drawing.id) : [...prev, drawing.id]);
+              toggleGlobalSelection(drawing.id);
             }
           }}
           onDoubleClick={(e) => {
@@ -2229,6 +2648,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
     setCanvasShapes(prev => [...prev, newShape]);
     setSelectedShapeId(newShape.id);
     setEditingCanvasShapeId(newShape.id);
+    setGlobalSelectedIds([newShape.id]); // Asegurar que aparezca el sub-menú al insertar
     setShowCanvasShapesPanel(false);
   };
 
@@ -2320,9 +2740,8 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
       setSelectedModel3DId(null);
       setEditingCanvasShapeId(null);
       if (!isSelectionMode) {
-        setSelectedBoxIds([]);
-        setSelectedLottieIds([]);
-        setSelectedModel3DIds([]);
+        setGlobalSelectedIds([]);
+        setTransformGroupId(null);
       }
       setShowTextMenu(false);
       setShowStylePanel(false);
@@ -2346,21 +2765,14 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
       setShowIconsPanel(false);
       setIsHighlighterActive(false);
     } else if (action === 'Eliminar') {
-      if (selectedBoxIds.length > 0) {
-        setTextBoxes(prev => prev.filter(box => !selectedBoxIds.includes(box.id)));
-        setSelectedBoxIds([]);
-      } else if (selectedLottieIds.length > 0) {
-        setLottieAnimations(prev => prev.filter(l => !selectedLottieIds.includes(l.id)));
-        setSelectedLottieIds([]);
-      } else if (selectedModel3DIds.length > 0) {
-        setModel3DAnimations(prev => prev.filter(m => !selectedModel3DIds.includes(m.id)));
-        setSelectedModel3DIds([]);
-      } else if (selectedShapeIds.length > 0) {
-        setCanvasShapes(prev => prev.filter(s => !selectedShapeIds.includes(s.id)));
-        setSelectedShapeIds([]);
-      } else if (selectedImageIds.length > 0) {
-        setImages(prev => prev.filter(img => !selectedImageIds.includes(img.id)));
-        setSelectedImageIds([]);
+      if (globalSelectedIds.length > 0) {
+        setTextBoxes(prev => prev.filter(box => !globalSelectedIds.includes(box.id)));
+        setLottieAnimations(prev => prev.filter(l => !globalSelectedIds.includes(l.id)));
+        setModel3DAnimations(prev => prev.filter(m => !globalSelectedIds.includes(m.id)));
+        setCanvasShapes(prev => prev.filter(s => !globalSelectedIds.includes(s.id)));
+        setImages(prev => prev.filter(img => !globalSelectedIds.includes(img.id)));
+        setSchemaNodes(prev => prev.filter(node => !globalSelectedIds.includes(node.id)));
+        setGlobalSelectedIds([]);
       } else if (selectedBoxId) {
         setTextBoxes(prev => prev.filter(box => box.id !== selectedBoxId));
         setSelectedBoxId(null);
@@ -2479,7 +2891,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
   const handleGeminiQuery = async () => {
     const selectedBoxes = useFullDocument 
       ? textBoxes 
-      : textBoxes.filter(box => selectedBoxIds.includes(box.id) || box.id === selectedBoxId);
+      : textBoxes.filter(box => globalSelectedIds.includes(box.id) || box.id === selectedBoxId);
 
     if (!geminiQuery.trim() && geminiImages.length === 0) {
       alert("Por favor, ingresa una pregunta o adjunta una imagen.");
@@ -2836,7 +3248,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
     
     setTextBoxes(prev => [...prev, newBox]);
     setSelectedBoxId(newBox.id);
-    setSelectedBoxIds([]);
+    setGlobalSelectedIds([]);
     
     // Clear selection after import
     setSelectedGeminiText('');
@@ -2845,20 +3257,128 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
     }
   };
 
+  useEffect(() => {
+    if (globalSelectedIds.length === 1) {
+      const id = globalSelectedIds[0];
+      if (textBoxes.some(b => b.id === id)) {
+        if (showCanvasShapesPanel) setShowCanvasShapesPanel(false);
+        if (showMediaMenu) setShowMediaMenu(false);
+        if (showLinesMenu) setShowLinesMenu(false);
+        if (!showTextMenu && isSelectionMode) setShowTextMenu(true);
+        if (selectedBoxId !== id) setSelectedBoxId(id);
+        
+        // Reset others to null for safety
+        if (selectedShapeId) setSelectedShapeId(null);
+        if (editingCanvasShapeId) setEditingCanvasShapeId(null);
+        if (selectedImageId) setSelectedImageId(null);
+        if (editingImageId) setEditingImageId(null);
+        if (selectedSchemaNodeId) setSelectedSchemaNodeId(null);
+        if (editingSchemaNodeId) setEditingSchemaNodeId(null);
+      } else if (canvasShapes.some(s => s.id === id)) {
+        if (showCanvasShapesPanel) setShowCanvasShapesPanel(false);
+        if (showTextMenu) setShowTextMenu(false);
+        if (showMediaMenu) setShowMediaMenu(false);
+        if (showLinesMenu) setShowLinesMenu(false);
+        if (selectedShapeId !== id) setSelectedShapeId(id);
+        
+        // Reset others
+        if (selectedBoxId) setSelectedBoxId(null);
+        if (selectedImageId) setSelectedImageId(null);
+        if (editingImageId) setEditingImageId(null);
+        if (selectedSchemaNodeId) setSelectedSchemaNodeId(null);
+        if (editingSchemaNodeId) setEditingSchemaNodeId(null);
+      } else if (images.some(i => i.id === id)) {
+        if (showMediaMenu) setShowMediaMenu(false);
+        if (showTextMenu) setShowTextMenu(false);
+        if (showCanvasShapesPanel) setShowCanvasShapesPanel(false);
+        if (showLinesMenu) setShowLinesMenu(false);
+        if (!editingImageId && isSelectionMode) setEditingImageId(id);
+        if (selectedImageId !== id) setSelectedImageId(id);
+        
+        // Reset others
+        if (selectedBoxId) setSelectedBoxId(null);
+        if (selectedShapeId) setSelectedShapeId(null);
+        if (editingCanvasShapeId) setEditingCanvasShapeId(null);
+        if (selectedSchemaNodeId) setSelectedSchemaNodeId(null);
+        if (editingSchemaNodeId) setEditingSchemaNodeId(null);
+      } else if (model3DAnimations.some(m => m.id === id) || lottieAnimations.some(l => l.id === id)) {
+        if (showMediaMenu) setShowMediaMenu(false);
+        if (showTextMenu) setShowTextMenu(false);
+        if (showCanvasShapesPanel) setShowCanvasShapesPanel(false);
+        if (showLinesMenu) setShowLinesMenu(false);
+        
+        // Clear all single selections
+        if (selectedBoxId) setSelectedBoxId(null);
+        if (selectedShapeId) setSelectedShapeId(null);
+        if (editingCanvasShapeId) setEditingCanvasShapeId(null);
+        if (selectedImageId) setSelectedImageId(null);
+        if (editingImageId) setEditingImageId(null);
+        if (selectedSchemaNodeId) setSelectedSchemaNodeId(null);
+        if (editingSchemaNodeId) setEditingSchemaNodeId(null);
+      } else if (schemaNodes.some(n => n.id === id)) {
+        if (selectedSchemaNodeId !== id) setSelectedSchemaNodeId(id);
+        if (showTextMenu) setShowTextMenu(false);
+        if (showCanvasShapesPanel) setShowCanvasShapesPanel(false);
+        if (showMediaMenu) setShowMediaMenu(false);
+        if (showLinesMenu) setShowLinesMenu(false);
+        
+        // Reset others
+        if (selectedBoxId) setSelectedBoxId(null);
+        if (selectedShapeId) setSelectedShapeId(null);
+        if (editingCanvasShapeId) setEditingCanvasShapeId(null);
+        if (selectedImageId) setSelectedImageId(null);
+        if (editingImageId) setEditingImageId(null);
+      }
+    } else if (globalSelectedIds.length > 1) {
+      // Deactivate individual menus as requested
+      if (showTextMenu) setShowTextMenu(false);
+      if (showCanvasShapesPanel) setShowCanvasShapesPanel(false);
+      if (showMediaMenu) setShowMediaMenu(false);
+      if (showLinesMenu) setShowLinesMenu(false);
+      
+      if (editingCanvasShapeId) setEditingCanvasShapeId(null);
+      if (editingSchemaNodeId) setEditingSchemaNodeId(null);
+      if (editingImageId) setEditingImageId(null);
+      
+      // Also clear IDs that might trigger menus
+      if (selectedBoxId) setSelectedBoxId(null);
+      if (selectedShapeId) setSelectedShapeId(null);
+      if (selectedImageId) setSelectedImageId(null);
+      if (selectedSchemaNodeId) setSelectedSchemaNodeId(null);
+    } else {
+      // Clear everything if length is 0
+      if (showTextMenu) setShowTextMenu(false);
+      if (showCanvasShapesPanel) setShowCanvasShapesPanel(false);
+      if (showMediaMenu) setShowMediaMenu(false);
+      if (showLinesMenu) setShowLinesMenu(false);
+      if (editingCanvasShapeId) setEditingCanvasShapeId(null);
+      if (editingSchemaNodeId) setEditingSchemaNodeId(null);
+      if (editingImageId) setEditingImageId(null);
+      if (selectedBoxId) setSelectedBoxId(null);
+      if (selectedShapeId) setSelectedShapeId(null);
+      if (selectedImageId) setSelectedImageId(null);
+      if (selectedSchemaNodeId) setSelectedSchemaNodeId(null);
+    }
+  }, [globalSelectedIds]); // Reduced dependency array to only globalSelectedIds to prevent loop when items are updated
+
   const addSchema = () => {
     setIsSchemaMode(true);
     const rect = containerRef.current?.getBoundingClientRect();
     const x = rect ? rect.width / 2 : 100;
     const y = rect ? rect.height / 2 : 100;
 
+    // Añadir un pequeño offset aleatorio si ya hay nodos para que no se encimen perfectamente
+    const offset = schemaNodes.length > 0 ? (Math.random() * 40 - 20) : 0;
+
     const newNode: SchemaNode = {
       id: generateId('node-'),
-      text: 'Nodo Central',
-      x: (x - transform.x) / transform.scale - 75,
-      y: (y - transform.y) / transform.scale - 30,
+      text: schemaNodes.length === 0 ? 'Nodo Central' : 'Nuevo Nodo',
+      x: ((x - transform.x) / transform.scale - 75) + offset,
+      y: ((y - transform.y) / transform.scale - 30) + offset,
       width: 150,
       height: 60,
       color: '#8e44ad',
+      schemaId: crypto.randomUUID(),
     };
     setSchemaNodes(prev => [...prev, newNode]);
     setSelectedSchemaNodeId(newNode.id);
@@ -2879,6 +3399,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
       height: 50,
       color: parent.color,
       parentId: parentId,
+      schemaId: parent.schemaId || crypto.randomUUID(),
     };
     setSchemaNodes(prev => [...prev, newNode]);
     setSelectedSchemaNodeId(newNode.id);
@@ -2903,34 +3424,107 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
     }
   };
 
-  const handleToggleMultiSelect = (id: string) => {
-    if (textBoxes.find(b => b.id === id)) {
-      setSelectedBoxIds(prev => 
-        prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+  const toggleGlobalSelection = useCallback((id: string) => {
+    setGlobalSelectedIds(prev => {
+      const isAlreadySelected = prev.includes(id);
+      const nextSelection = isAlreadySelected ? prev.filter(i => i !== id) : [...prev, id];
+      
+      // Auto-activate image editing menu if exactly one image is selected in selection mode
+      if (nextSelection.length === 1) {
+        const selectedId = nextSelection[0];
+        const isImage = images.some(img => img.id === selectedId);
+        if (isImage) {
+          setEditingImageId(selectedId);
+          setSelectedImageId(selectedId);
+        } else {
+          setEditingImageId(null);
+        }
+      } else {
+        setEditingImageId(null);
+      }
+      
+      return nextSelection;
+    });
+  }, [setGlobalSelectedIds, images]);
+
+  const selectAsset = useCallback((id: string, type: 'shape' | 'box' | 'image' | 'lottie' | 'model3d' | 'schema') => {
+    // Si estamos en modo selección, respetamos la selección múltiple y no reseteamos todo
+    if (isSelectionMode) {
+      setGlobalSelectedIds(prev => 
+        prev.includes(id) ? prev : [...prev, id]
       );
-    } else if (lottieAnimations.find(l => l.id === id)) {
-      setSelectedLottieIds(prev =>
-        prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-      );
-    } else if (model3DAnimations.find(m => m.id === id)) {
-      setSelectedModel3DIds(prev =>
-        prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-      );
-    } else if (canvasShapes.find(s => s.id === id)) {
-      setSelectedShapeIds(prev =>
-        prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-      );
+      // Actualizamos los selectores individuales solo si el tipo coincide
+      if (type === 'shape') setSelectedShapeId(id);
+      if (type === 'box') setSelectedBoxId(id);
+      if (type === 'image') setSelectedImageId(id);
+      if (type === 'lottie') setSelectedLottieId(id);
+      if (type === 'model3d') setSelectedModel3DId(id);
+      if (type === 'schema') setSelectedSchemaNodeId(id);
+      return;
     }
+
+    setSelectedShapeId(type === 'shape' ? id : null);
+    setSelectedBoxId(type === 'box' ? id : null);
+    setSelectedImageId(type === 'image' ? id : null);
+    setSelectedLottieId(type === 'lottie' ? id : null);
+    setSelectedModel3DId(type === 'model3d' ? id : null);
+    setSelectedSchemaNodeId(type === 'schema' ? id : null);
+    setSelectedDrawingId(null);
+    
+    setEditingSchemaNodeId(prev => (type === 'schema' && prev === id) ? prev : null);
+    if (type !== 'shape') setEditingCanvasShapeId(null);
+    if (type !== 'image') setEditingImageId(null);
+
+    setGlobalSelectedIds([id]);
+  }, [isSelectionMode, setGlobalSelectedIds]);
+
+  const handleShapeSelect = useCallback((id: string) => selectAsset(id, 'shape'), [selectAsset]);
+  const handleBoxSelect = useCallback((id: string) => selectAsset(id, 'box'), [selectAsset]);
+  const handleImageSelect = useCallback((id: string) => selectAsset(id, 'image'), [selectAsset]);
+  const handleLottieSelect = useCallback((id: string) => selectAsset(id, 'lottie'), [selectAsset]);
+  const handleModel3DSelect = useCallback((id: string) => selectAsset(id, 'model3d'), [selectAsset]);
+  const handleSchemaSelect = useCallback((id: string) => selectAsset(id, 'schema'), [selectAsset]);
+
+  const handleUnifiedDrag = (id: string, delta: { x: number, y: number }) => {
+    // Dispatch high-performance custom event for smooth movement across all types
+    window.dispatchEvent(new CustomEvent('group-drag', { 
+      detail: { senderId: id, delta } 
+    }));
+
+    // We don't perform React state updates during drag for globalSelectedIds > 1
+    // to maintain high FPS on devices like Redmi Pad SE.
+    // The final state sync happens in onGroupDragEnd which each component calls.
   };
 
-  const handleGroupDrag = (id: string, delta: { x: number, y: number }) => {
-    if (selectedBoxIds.includes(id) || selectedLottieIds.includes(id) || selectedModel3DIds.includes(id) || selectedShapeIds.includes(id) || selectedImageIds.includes(id)) {
-      // Dispatch a custom event for other elements to update their motion values
-      window.dispatchEvent(new CustomEvent('group-drag', { 
-        detail: { senderId: id, delta } 
-      }));
-    }
-  };
+  // Escuchador de alto rendimiento para mover las líneas de esquema en tiempo real
+  useEffect(() => {
+    const handleGroupDragEvent = (e: any) => {
+      const { delta } = e.detail;
+      
+      // Actualizamos todas las líneas conectadas a nodos seleccionados
+      globalSelectedIds.forEach(selectedId => {
+        // 1. Línea donde el seleccionado es el HIJO (punto final x2, y2)
+        const childLine = document.querySelector(`.schema-connector-${selectedId}`) as SVGLineElement | null;
+        if (childLine) {
+          childLine.x2.baseVal.value += delta.x;
+          childLine.y2.baseVal.value += delta.y;
+        }
+        
+        // 2. Líneas donde el seleccionado es el PADRE (punto inicial x1, y1)
+        const parentLines = document.querySelectorAll(`.schema-connector-parent-${selectedId}`);
+        parentLines.forEach(line => {
+          const l = line as SVGLineElement;
+          if (l) {
+            l.x1.baseVal.value += delta.x;
+            l.y1.baseVal.value += delta.y;
+          }
+        });
+      });
+    };
+
+    window.addEventListener('group-drag', handleGroupDragEvent);
+    return () => window.removeEventListener('group-drag', handleGroupDragEvent);
+  }, [globalSelectedIds]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -3011,21 +3605,17 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
     setModel3DAnimations(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
   };
 
-  const updateCanvasImage = useCallback((id: string, updates: Partial<CanvasImage>) => {
+  const updateCanvasImage = useCallback((id: string, updates: Partial<CanvasImage> & { _delete?: boolean }) => {
+    if (updates._delete) {
+      setImages(prev => prev.filter(img => img.id !== id));
+      if (selectedImageId === id) setSelectedImageId(null);
+      if (editingImageId === id) setEditingImageId(null);
+      return;
+    }
     setImages(prev => prev.map(img => img.id === id ? { ...img, ...updates } : img));
-  }, []);
+  }, [selectedImageId, editingImageId]);
 
   const handleImageUpdate = updateCanvasImage;
-
-  const handleImageSelect = useCallback((id: string) => {
-    setSelectedImageId(id);
-    setEditingImageId(null);
-    setSelectedBoxId(null);
-    setSelectedLottieId(null);
-    setSelectedModel3DId(null);
-    setSelectedShapeId(null);
-    setEditingCanvasShapeId(null);
-  }, []);
 
   const handleImageLongPress = useCallback((id: string) => {
     setEditingImageId(id);
@@ -3079,19 +3669,32 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
           position: relative !important;
           display: inline-block !important;
         }
-        .sub-menu-lineas-contenedor-flex {
+        .sub-menu-completo-de-boton-de-insertar-lineas,
+        .sub-menu-completo-de-instance {
           position: absolute !important;
           bottom: 100% !important;
           left: 50% !important;
           transform: translateX(-50%) !important;
-          margin-bottom: 12px !important;
+          margin-bottom: 21px !important; /* Adjusted margin to avoid overlap as per common tablet issues */
           display: flex !important;
           flex-direction: column !important;
           align-items: center !important;
-          gap: 4px !important;
+          gap: 5px !important; /* Exact match with figma gap */
           z-index: 1000 !important;
           background-color: transparent !important;
           border: none !important;
+        }
+
+        .div-3 {
+          align-items: flex-start !important;
+          background-color: #232323 !important;
+          border-radius: 3px !important;
+          display: flex !important;
+          gap: 5px !important;
+          height: 27px !important;
+          padding: 3px 14px 4px 9px !important;
+          position: relative !important;
+          width: 156px !important;
         }
 
         .sub-menu-lineas-fila-inferior {
@@ -3598,7 +4201,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
           </div>
         </div>
         
-        {/* Botones de Cámara y Géminis (Ahora fuera del fondo principal) */}
+        {!isViewOnly && (
         <div className="flex items-center gap-2 p-1">
           <button 
             id="btn-medscan"
@@ -3659,6 +4262,18 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
           >
             <FileText size={20} color="#8e44ad" />
           </button>
+          
+          <button 
+            id="btn-export-single"
+            onClick={handleSingleExport}
+            className="flex items-center gap-2 px-3 h-10 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-lg transition-all active:scale-95"
+            title="Exportar archivo de nota (.json)"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <FileDown size={18} />
+            <span className="text-[10px] font-black uppercase tracking-wider hidden sm:inline">Exportar</span>
+          </button>
+
           <input 
             type="file" 
             ref={pdfInputRef} 
@@ -3670,6 +4285,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
             }}
           />
         </div>
+        )}
       </div>
 
       {/* Side Panel: Pendientes */}
@@ -3943,6 +4559,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
               return (
                 <line
                   key={`conn-${node.id}`}
+                  className={`schema-connector-${node.id} schema-connector-parent-${node.parentId}`}
                   x1={startX}
                   y1={startY}
                   x2={endX}
@@ -3965,24 +4582,39 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
               rotation={box.rotation || 0}
               zIndex={box.zIndex || 10}
               isSelected={box.id === selectedBoxId}
-              isMultiSelected={selectedBoxIds.includes(box.id)}
+              isMultiSelected={globalSelectedIds.length > 1 && globalSelectedIds.includes(box.id)}
               isSelectionMode={isSelectionMode}
               canEdit={showTextMenu}
-              onSelect={() => {
-                setSelectedBoxId(box.id);
-                setSelectedLottieId(null);
-                setSelectedModel3DId(null);
-                setSelectedDrawingId(null);
-                setSelectedShapeId(null);
-                setSelectedImageId(null);
+              onSelect={handleBoxSelect}
+              onToggleMultiSelect={toggleGlobalSelection}
+              onLongPress={(id) => {
+                if (!showTextMenu) setShowTextMenu(true);
               }}
-              onToggleMultiSelect={handleToggleMultiSelect}
               onUpdate={updateTextBox}
-              onGroupDrag={handleGroupDrag}
+              onGroupDrag={handleUnifiedDrag}
               onGroupDragEnd={() => {}}
               onEditingChange={handleEditingChange}
               canvasScale={transform.scale}
               isHandMode={isHandMode}
+            />
+          ))}
+
+          {canvasShapes.map((shape) => (
+            <CanvasShapeComponent
+              key={shape.id}
+              {...shape}
+              isSelected={selectedShapeId === shape.id}
+              isMultiSelected={globalSelectedIds.length > 1 && globalSelectedIds.includes(shape.id)}
+              isSelectionMode={isSelectionMode}
+              isHandMode={isHandMode}
+              isEditing={editingCanvasShapeId === shape.id}
+              onSelect={handleShapeSelect}
+              onStartEdit={() => setEditingCanvasShapeId(shape.id)}
+              onToggleMultiSelect={toggleGlobalSelection}
+              onUpdate={updateCanvasShape}
+              onGroupDrag={handleUnifiedDrag}
+              onGroupDragEnd={() => {}}
+              canvasScale={transform.scale}
             />
           ))}
 
@@ -3993,20 +4625,15 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
               rotation={img.rotation || 0}
               zIndex={img.zIndex || 10}
               isSelected={img.id === selectedImageId}
-              isMultiSelected={selectedBoxIds.includes(img.id)}
+              isMultiSelected={globalSelectedIds.length > 1 && globalSelectedIds.includes(img.id)}
               isSelectionMode={isSelectionMode}
               canEdit={true}
-              onSelect={() => {
-                setSelectedImageId(img.id);
-                setSelectedBoxId(null);
-                setSelectedLottieId(null);
-                setSelectedModel3DId(null);
-                setSelectedDrawingId(null);
-                setSelectedShapeId(null);
-              }}
-              onToggleMultiSelect={handleToggleMultiSelect}
+              onSelect={handleImageSelect}
+              onInteraction={(e) => handleImageInteraction(img.id, e)}
+              isEditing={img.id === editingImageId}
+              onToggleMultiSelect={toggleGlobalSelection}
               onUpdate={updateCanvasImage}
-              onGroupDrag={handleGroupDrag}
+              onGroupDrag={handleUnifiedDrag}
               onGroupDragEnd={() => {}}
               canvasScale={transform.scale}
               isHandMode={isHandMode}
@@ -4017,16 +4644,13 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
               key={lottie.id}
               {...lottie}
               isSelected={selectedLottieId === lottie.id}
-              isMultiSelected={selectedLottieIds.includes(lottie.id)}
+              isMultiSelected={globalSelectedIds.includes(lottie.id)}
               isSelectionMode={isSelectionMode}
               isHandMode={isHandMode}
-              onSelect={() => {
-                setSelectedLottieId(lottie.id);
-                setSelectedBoxId(null);
-              }}
-              onToggleMultiSelect={handleToggleMultiSelect}
+              onSelect={handleLottieSelect}
+              onToggleMultiSelect={toggleGlobalSelection}
               onUpdate={updateLottieAnimation}
-              onGroupDrag={handleGroupDrag}
+              onGroupDrag={handleUnifiedDrag}
               onGroupDragEnd={() => {}}
               canvasScale={transform.scale}
             />
@@ -4036,21 +4660,93 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
               key={model.id}
               {...model}
               isSelected={selectedModel3DId === model.id}
-              isMultiSelected={selectedModel3DIds.includes(model.id)}
+              isMultiSelected={globalSelectedIds.includes(model.id)}
               isSelectionMode={isSelectionMode}
               isHandMode={isHandMode}
-              onSelect={() => {
-                setSelectedModel3DId(model.id);
-                setSelectedBoxId(null);
-                setSelectedLottieId(null);
-              }}
-              onToggleMultiSelect={handleToggleMultiSelect}
+              onSelect={handleModel3DSelect}
+              onToggleMultiSelect={toggleGlobalSelection}
               onUpdate={updateModel3DAnimation}
-              onGroupDrag={handleGroupDrag}
+              onGroupDrag={handleUnifiedDrag}
               onGroupDragEnd={() => {}}
               canvasScale={transform.scale}
             />
           ))}
+          
+          {schemaNodes.map((node) => (
+            <SchemaNodeComponent
+              key={node.id}
+              {...node}
+              isSelected={selectedSchemaNodeId === node.id}
+              isMultiSelected={globalSelectedIds.includes(node.id)}
+              isSelectionMode={isSelectionMode}
+              isSchemaMode={isSchemaMode}
+              canvasScale={transform.scale}
+              onSelect={handleSchemaSelect}
+              onInteraction={(e) => handleSchemaInteraction(e, node.schemaId || node.id, node.id)}
+              onCancelInteraction={handleCancelSchemaInteraction}
+              onToggleMultiSelect={toggleGlobalSelection}
+              onUpdate={updateSchemaNode}
+              onDelete={deleteSchemaNode}
+              onAddChild={addChildNode}
+              onStartEdit={(id) => setEditingSchemaNodeId(id)}
+              onGroupDrag={handleUnifiedDrag}
+              onGroupDragEnd={() => {}}
+            />
+          ))}
+
+          {/* Group Multiple Schema Selector Buttons */}
+          {isSelectionMode && Array.from(
+            schemaNodes.reduce((acc, node) => {
+              const sId = node.schemaId || node.id;
+              if (!acc.has(sId)) {
+                acc.set(sId, []);
+              }
+              acc.get(sId).push(node);
+              return acc;
+            }, new Map<string, typeof schemaNodes>()).entries()
+          ).map(([sId, nodes]) => {
+            // Find base position below the group
+            const minX = Math.min(...nodes.map(n => n.x));
+            const maxX = Math.max(...nodes.map(n => n.x + n.width));
+            const maxY = Math.max(...nodes.map(n => n.y + n.height));
+            const centerX = (minX + maxX) / 2;
+            
+            return (
+              <div
+                key={`schema-group-btn-${sId}`}
+                style={{
+                  position: 'absolute',
+                  left: centerX,
+                  top: maxY + 20,
+                  transform: 'translateX(-50%)',
+                  zIndex: 1002,
+                }}
+              >
+                <button
+                  title="Seleccionar esquema completo"
+                  className="w-10 h-10 bg-[#8e44ad] hover:scale-110 outline outline-2 outline-white text-white rounded-full flex items-center justify-center shadow-lg cursor-pointer pointer-events-auto transition-transform"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const fullSchema = schemaNodes.filter(n => n.schemaId === sId || n.id === sId);
+                    const schemaIds = fullSchema.map(n => n.id);
+                    
+                    setGlobalSelectedIds(prev => {
+                      // Si estamos en modo selección, sumamos al grupo
+                      if (isSelectionMode) {
+                        return [...new Set([...prev, ...schemaIds])];
+                      }
+                      // Si no, reemplazamos
+                      return schemaIds;
+                    });
+                    setTransformGroupId(`group-${crypto.randomUUID()}`);
+                  }}
+                >
+                  <Network size={20} />
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         {/* Zoom & Reset Controls */}
@@ -4085,6 +4781,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
       </div>
 
       {/* Barra de Herramientas (Segmento inferior con botones negros) */}
+      {!isViewOnly && (
       <div className="frame frame-insert-lines" style={{ position: 'fixed', bottom: '10px', left: '0', width: '100%', height: 'auto', pointerEvents: 'none', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div className="control-container" style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'auto' }}>
           
@@ -4092,6 +4789,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
             <div className="absolute bottom-[75px] left-1/2 -translate-x-1/2 z-[10001] pointer-events-auto">
               <button 
                 onClick={addSchema}
+                style={{ marginLeft: '-4px', marginTop: '0px', marginBottom: '21px' }}
                 className="flex items-center gap-3 bg-[#232323] text-white px-8 py-4 rounded-full border-2 border-[#FFD105] shadow-[0_0_25px_rgba(255,209,5,0.4)] hover:scale-105 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
               >
                 <PlusCircle size={26} className="text-[#FFD105]" />
@@ -4174,15 +4872,18 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                     className="div-2" 
                     tabIndex={0}
                     style={{ 
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
                       minWidth: '320px', 
-                      maxWidth: '420px',
+                      maxWidth: '450px',
                       overflowX: 'auto', 
                       whiteSpace: 'nowrap', 
-                      padding: '0 120px', 
+                      padding: '0 40px', 
                       scrollbarWidth: 'none',
                       cursor: isDraggingFontSize.current ? 'grabbing' : 'grab',
                       outline: 'none',
-                      scrollSnapType: 'x mandatory'
+                      height: '60px'
                     }}
                     onMouseDown={handleFontSizeMouseDown}
                     onMouseMove={handleFontSizeMouseMove}
@@ -4642,16 +5343,16 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                   </span>
                 </button>
                 {showLinesMenu && (
-                    <div className="sub-menu-lineas-contenedor-flex">
+                    <div className="sub-menu-completo-de-boton-de-insertar-lineas">
                       {showLineColorPalette && (
-                        <div className="paleta-colores-lineas">
+                        <div className="div-3">
                           <button className="ellipse-black" onClick={() => { setStrokeColor('#000000'); setShowLineColorPalette(false); }}></button>
                           <button className="ellipse-yellow" onClick={() => { setStrokeColor('#FFD105'); setShowLineColorPalette(false); }}></button>
                           <button className="ellipse-green" onClick={() => { setStrokeColor('#00ff00'); setShowLineColorPalette(false); }}></button>
-                          <button className="ellipse-purple" onClick={() => { setStrokeColor('#7500c9'); setShowLineColorPalette(false); }}></button>
-                          <button className="ellipse-pink" onClick={() => { setStrokeColor('#fe19fa'); setShowLineColorPalette(false); }}></button>
-                          <button className="ellipse-cyan" onClick={() => { setStrokeColor('#0bf5e6'); setShowLineColorPalette(false); }}></button>
-                          <button className="ellipse-red" onClick={() => { setStrokeColor('#ff2c2c'); setShowLineColorPalette(false); }}></button>
+                          <button className="ellipse-instance" onClick={() => { setStrokeColor('#7500c9'); setShowLineColorPalette(false); }}></button>
+                          <button className="ellipse-2-instance" onClick={() => { setStrokeColor('#fe19fa'); setShowLineColorPalette(false); }}></button>
+                          <button className="design-component-instance-node" onClick={() => { setStrokeColor('#0bf5e6'); setShowLineColorPalette(false); }}></button>
+                          <button className="ellipse-3" onClick={() => { setStrokeColor('#ff2c2c'); setShowLineColorPalette(false); }}></button>
                         </div>
                       )}
                       <div className="sub-menu-lineas-fila-inferior">
@@ -4725,7 +5426,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                   <span className="icon-instance-node"><Plus size={20} /></span>
                 </button>
                 {showMediaMenu && (
-                  <div className="sub-menu-lineas-contenedor-flex">
+                  <div className="sub-menu-completo-de-instance">
                     <div className="sub-menu-lineas-horizontal">
                       <div className="botones-principales-lineas">
                         <button 
@@ -4873,9 +5574,10 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
           )}
         </div>
       </div>
+      )}
 
       {/* Barra de edición inferior para Esquemas (Estilo similar al menú de texto) */}
-      {(editingCanvasShapeId || (isSelectionMode && selectedShapeIds.length > 0)) && !isHandMode && (
+      {globalSelectedIds.length === 1 && editingCanvasShapeId && !isHandMode && (
         <motion.div 
           initial={{ y: 200, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -4886,13 +5588,12 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
             <div className="flex items-center gap-12 max-w-7xl mx-auto w-full">
               <div className="flex flex-col gap-2">
                 <span className="text-xs text-white/40 uppercase font-black tracking-widest">
-                  {selectedShapeIds.length > 1 ? `Editando ${selectedShapeIds.length} Formas` : 'Tipo de Forma'}
+                  Tipo de Forma
                 </span>
                 <div className="flex items-center gap-3">
                   <div className="p-3 bg-white/5 rounded-xl border border-white/10 text-[#FFD105]">
                     {(() => {
-                      if (selectedShapeIds.length > 1) return <BoxSelect size={24} />;
-                      const targetId = editingCanvasShapeId || selectedShapeIds[0];
+                      const targetId = editingCanvasShapeId || globalSelectedIds[0];
                       const shape = canvasShapes.find(s => s.id === targetId);
                       if (!shape) return <Diamond size={24} />;
                       switch (shape.type) {
@@ -4911,7 +5612,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                     })()}
                   </div>
                   <span className="text-xl text-white font-bold capitalize">
-                    {selectedShapeIds.length > 1 ? 'Selección Múltiple' : (canvasShapes.find(s => s.id === (editingCanvasShapeId || selectedShapeIds[0]))?.type || 'Forma')}
+                    {canvasShapes.find(s => s.id === (editingCanvasShapeId || globalSelectedIds[0]))?.type || 'Forma'}
                   </span>
                 </div>
               </div>
@@ -4923,9 +5624,8 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                   <span className="text-xs text-white/40 uppercase font-black tracking-widest">Color de Fondo</span>
                   <div className="flex gap-2 flex-wrap">
                     {SHAPE_PALETTE.map(c => {
-                      const isActive = selectedShapeIds.length > 0 
-                        ? (selectedShapeIds.length === 1 && canvasShapes.find(s => s.id === selectedShapeIds[0])?.fillColor === c.value)
-                        : (canvasShapes.find(s => s.id === editingCanvasShapeId)?.fillColor === c.value);
+                      const targetId = editingCanvasShapeId || globalSelectedIds[0];
+                      const isActive = canvasShapes.find(s => s.id === targetId)?.fillColor === c.value;
                       
                       return (
                         <button 
@@ -4933,10 +5633,9 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                           className={`w-8 h-8 rounded-full border-2 transition-all hover:scale-110 ${isActive ? 'border-white scale-110 shadow-[0_0_15px_rgba(255,255,255,0.3)]' : 'border-transparent'}`}
                           style={{ backgroundColor: c.value }}
                           onClick={() => {
-                            if (selectedShapeIds.length > 0) {
-                              updateMultipleCanvasShapes(selectedShapeIds, { fillColor: c.value });
-                            } else if (editingCanvasShapeId) {
-                              updateCanvasShape(editingCanvasShapeId, { fillColor: c.value });
+                            const targetId = editingCanvasShapeId || globalSelectedIds[0];
+                            if (targetId) {
+                               updateCanvasShape(targetId, { fillColor: c.value });
                             }
                           }}
                           title={c.name}
@@ -4950,9 +5649,8 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                   <span className="text-xs text-white/40 uppercase font-black tracking-widest">Color de Borde</span>
                   <div className="flex gap-2 flex-wrap">
                     {SHAPE_PALETTE.map(c => {
-                      const isActive = selectedShapeIds.length > 0 
-                        ? (selectedShapeIds.length === 1 && canvasShapes.find(s => s.id === selectedShapeIds[0])?.borderColor === c.value)
-                        : (canvasShapes.find(s => s.id === editingCanvasShapeId)?.borderColor === c.value);
+                      const targetId = editingCanvasShapeId || globalSelectedIds[0];
+                      const isActive = canvasShapes.find(s => s.id === targetId)?.borderColor === c.value;
 
                       return (
                         <button 
@@ -4960,10 +5658,9 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                           className={`w-8 h-8 rounded-full border-2 transition-all hover:scale-110 ${isActive ? 'border-white scale-110 shadow-[0_0_15px_rgba(255,255,255,0.3)]' : 'border-transparent'}`}
                           style={{ backgroundColor: c.value }}
                           onClick={() => {
-                            if (selectedShapeIds.length > 0) {
-                              updateMultipleCanvasShapes(selectedShapeIds, { borderColor: c.value });
-                            } else if (editingCanvasShapeId) {
-                              updateCanvasShape(editingCanvasShapeId, { borderColor: c.value });
+                            const targetId = editingCanvasShapeId || globalSelectedIds[0];
+                            if (targetId) {
+                               updateCanvasShape(targetId, { borderColor: c.value });
                             }
                           }}
                           title={c.name}
@@ -4978,9 +5675,11 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                 {!isSelectionMode && (
                   <button 
                     onClick={() => {
-                      if (editingCanvasShapeId) {
-                        deleteCanvasShape(editingCanvasShapeId);
+                      const targetId = editingCanvasShapeId || globalSelectedIds[0];
+                      if (targetId) {
+                        deleteCanvasShape(targetId);
                         setEditingCanvasShapeId(null);
+                        setGlobalSelectedIds([]);
                       }
                     }}
                     className="p-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl hover:bg-red-500 hover:text-white transition-all transform hover:scale-105 active:scale-95"
@@ -4994,7 +5693,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                     setEditingCanvasShapeId(null);
                     if (isSelectionMode) {
                       setIsSelectionMode(false);
-                      setSelectedShapeIds([]);
+                      setGlobalSelectedIds([]);
                     }
                   }}
                   className="p-4 bg-[#FFD105] text-black rounded-2xl font-black uppercase tracking-widest px-8 hover:scale-105 transition-all active:scale-95"
@@ -5015,17 +5714,6 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
           exit={{ y: 200, opacity: 0 }}
           className="fixed bottom-0 left-0 right-0 z-[10000] flex flex-col items-center pointer-events-none"
         >
-          {isSchemaMode && (
-            <div className="mb-4 pointer-events-auto">
-              <button 
-                onClick={addSchema}
-                className="flex items-center gap-3 bg-[#232323] text-white px-8 py-4 rounded-full border-2 border-[#FFD105] shadow-[0_0_25px_rgba(255,209,5,0.4)] hover:scale-105 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
-              >
-                <PlusCircle size={26} className="text-[#FFD105]" />
-                <span className="text-base font-black uppercase tracking-widest">Añadir Nodo</span>
-              </button>
-            </div>
-          )}
           <div className="bg-[#1a1a1a] border-t-4 border-[#8e44ad] p-4 flex flex-col gap-4 shadow-[0_-30px_80px_rgba(0,0,0,0.9)] w-full pointer-events-auto">
             {/* Contenedor principal con sub-menú a la izquierda */}
             <div className="flex items-center gap-4 max-w-7xl mx-auto w-full">
@@ -5392,16 +6080,16 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
           dragListener={false}
           dragMomentum={false}
           dragElastic={0.05}
-          className="fixed top-24 right-8 z-[1000] w-[360px] flex flex-col shadow-2xl overflow-visible"
+          className="fixed top-24 right-8 z-[1000] w-[450px] md:w-[500px] lg:w-[550px] flex flex-col shadow-2xl overflow-visible"
           style={{ 
-            backgroundColor: '#232323',
-            border: '2px solid #8e44ad',
+            backgroundColor: '#1a1a1a',
+            border: '1px solid #8e44ad',
             height: 'auto',
-            minHeight: '450px',
-            maxHeight: 'calc(100vh - 100px)',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6)',
-            borderTopLeftRadius: 0,
-            borderTopRightRadius: 0,
+            minHeight: '500px',
+            maxHeight: 'calc(100vh - 120px)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
+            borderTopLeftRadius: '8px',
+            borderTopRightRadius: '8px',
             borderBottomLeftRadius: '16px',
             borderBottomRightRadius: '16px',
             touchAction: 'none'
@@ -5410,64 +6098,97 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
           animate={{ opacity: 1, scale: 1, y: 0 }}
           whileDrag={{ cursor: 'grabbing' }}
         >
-          {/* Handle de arrastre (Igual que en los cuadros de texto) */}
+          {/* Handles de arrastre laterales y superior extendido */}
           <div 
-            className="absolute -top-5 left-[-2px] right-[-2px] h-5 bg-[#8e44ad] rounded-t-sm flex items-center justify-center cursor-move z-[1002]"
+            className="absolute -top-6 left-0 right-0 h-6 bg-[#8e44ad]/80 hover:bg-[#8e44ad] rounded-t-xl flex items-center justify-center cursor-move z-[1005] transition-colors shadow-lg"
             onPointerDown={(e) => geminiDragControls.start(e)}
             style={{ touchAction: 'none' }}
           >
-            <div className="w-8 h-1 bg-white/40 rounded-full" />
+            <div className="w-16 h-1.5 bg-white/40 rounded-full" />
           </div>
 
-          <div className="flex flex-col w-full h-full rounded-b-2xl">
-            {/* Header de la ventana */}
-            <div className="flex items-center justify-between p-4 border-b border-white/10">
-            <div className="flex items-center gap-2">
-              <Sparkles size={18} color="#8e44ad" />
-              <span className="text-white font-semibold text-sm">Consultar a Gemini</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button 
-                onClick={() => {
-                  setShowGeminiModal(false);
-                  setGeminiResponse('');
-                  setGeminiQuery('');
-                  setShowGeminiMenu(false);
-                  setGeminiImages([]);
-                  setGeminiAudio(null);
-                  setUseFullDocument(false);
-                }}
-                className="p-1 hover:bg-white/10 rounded-full transition-colors"
-              >
-                <X size={18} color="white" />
-              </button>
-            </div>
-          </div>
-
-          {/* Cuerpo de la ventana (Respuestas) */}
+          {/* Reborde lateral izquierdo (Área de agarre aumentada) */}
           <div 
-            className="flex-1 min-h-[300px] overflow-y-auto p-4 custom-scrollbar relative"
-            onMouseUp={handleTextSelection}
+            className="absolute top-0 bottom-0 -left-3 w-6 cursor-move z-[1005] group"
+            onPointerDown={(e) => geminiDragControls.start(e)}
+            style={{ touchAction: 'none' }}
           >
-            {geminiResponse ? (
-              <>
-                <div className="text-white/90 prose prose-invert prose-sm max-w-none">
-                  <Markdown>{geminiResponse}</Markdown>
-                </div>
-                <button
-                  onClick={handleImportToCanvas}
-                  className="sticky bottom-0 mt-4 ml-auto flex items-center gap-2 px-3 py-2 bg-[#8e44ad] hover:bg-[#9b59b6] text-white text-xs font-medium rounded-lg transition-all shadow-lg animate-in fade-in slide-in-from-bottom-2"
-                  title={selectedGeminiText ? "Importar fragmento seleccionado" : "Importar respuesta completa"}
+            <div className="absolute right-0 top-4 bottom-4 w-1.5 bg-[#8e44ad]/20 group-hover:bg-[#8e44ad]/60 transition-colors rounded-full" />
+          </div>
+
+          {/* Reborde lateral derecho (Área de agarre aumentada) */}
+          <div 
+            className="absolute top-0 bottom-0 -right-3 w-6 cursor-move z-[1005] group"
+            onPointerDown={(e) => geminiDragControls.start(e)}
+            style={{ touchAction: 'none' }}
+          >
+            <div className="absolute left-0 top-4 bottom-4 w-1.5 bg-[#8e44ad]/20 group-hover:bg-[#8e44ad]/60 transition-colors rounded-full" />
+          </div>
+
+          {/* Reborde inferior (Área de agarre aumentada) */}
+          <div 
+            className="absolute -bottom-3 left-4 right-4 h-6 cursor-move z-[1005] group"
+            onPointerDown={(e) => geminiDragControls.start(e)}
+            style={{ touchAction: 'none' }}
+          >
+            <div className="absolute top-0 left-10 right-10 h-1.5 bg-[#8e44ad]/20 group-hover:bg-[#8e44ad]/60 transition-colors rounded-full" />
+          </div>
+
+          <div className="flex flex-col w-full h-full rounded-b-2xl overflow-hidden relative z-10">
+            {/* Header de la ventana - AHORA ES DRAGGABLE TAMBIÉN */}
+            <div 
+              className="flex items-center justify-between p-4 border-b border-white/10 cursor-move bg-[#232323]"
+              onPointerDown={(e) => geminiDragControls.start(e)}
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles size={18} color="#8e44ad" />
+                <span className="text-white font-semibold text-sm">Asistente Gemini</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button 
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowGeminiModal(false);
+                    setGeminiResponse('');
+                    setGeminiQuery('');
+                    setShowGeminiMenu(false);
+                    setGeminiImages([]);
+                    setGeminiAudio(null);
+                    setUseFullDocument(false);
+                  }}
+                  className="p-1.5 hover:bg-white/10 rounded-full transition-colors"
                 >
-                  <Plus size={14} />
-                  {selectedGeminiText ? "Importar Selección" : "Importar al Lienzo"}
+                  <X size={18} color="white" />
                 </button>
-              </>
-            ) : (
+              </div>
+            </div>
+
+            {/* Cuerpo de la ventana (Respuestas) */}
+            <div 
+              className="flex-1 min-h-[350px] overflow-y-auto overflow-x-hidden p-6 custom-scrollbar relative bg-[#232323]"
+              onMouseUp={handleTextSelection}
+            >
+              {geminiResponse ? (
+                <>
+                  <div className="text-white/90 prose prose-invert prose-sm max-w-none break-words text-[13px] leading-relaxed">
+                    <Markdown>{geminiResponse}</Markdown>
+                  </div>
+                  <button
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={handleImportToCanvas}
+                    className="sticky bottom-0 mt-6 ml-auto flex items-center gap-2 px-4 py-2.5 bg-[#8e44ad] hover:bg-[#9b59b6] text-white text-xs font-bold rounded-xl transition-all shadow-xl animate-in fade-in slide-in-from-bottom-2 border border-white/10"
+                    title={selectedGeminiText ? "Importar fragmento seleccionado" : "Importar respuesta completa"}
+                  >
+                    <Plus size={16} />
+                    {selectedGeminiText ? "Importar Selección" : "Importar al Lienzo"}
+                  </button>
+                </>
+              ) : (
                 <div className="h-full flex flex-col items-center justify-center text-white/40 gap-3 py-12">
                   <BrainCircuit size={40} strokeWidth={1} />
                   <p className="text-center text-xs px-6">
-                    {textBoxes.filter(b => selectedBoxIds.includes(b.id) || b.id === selectedBoxId).length > 0 
+                    {textBoxes.filter(b => globalSelectedIds.includes(b.id) || b.id === selectedBoxId).length > 0 
                       ? "Haz una pregunta sobre tus notas seleccionadas o investiga algo nuevo."
                       : "Pregúntame lo que quieras o selecciona notas para darme contexto."}
                   </p>
@@ -5588,24 +6309,24 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
             )}
 
             <div 
-              className="grid grid-cols-[auto_1fr_auto] gap-3 bg-white/5 rounded-2xl p-2.5 border border-white/10 focus-within:border-[#8e44ad] transition-all"
-              style={{ marginTop: '19px', marginLeft: '0px', height: '57.1429px' }}
+              className="grid grid-cols-[auto_1fr_auto] items-center gap-2 bg-white/5 rounded-2xl p-1.5 border border-white/10 focus-within:border-[#8e44ad] transition-all"
             >
               <button 
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowGeminiMenu(!showGeminiMenu);
                 }}
-                className={`w-14 h-14 flex items-center justify-center rounded-xl transition-all ${showGeminiMenu ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${showGeminiMenu ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
               >
-                <MoreVertical size={26} />
+                <MoreVertical size={20} />
               </button>
               <textarea
                 value={geminiQuery}
+                onPointerDown={(e) => e.stopPropagation()}
                 onChange={(e) => setGeminiQuery(e.target.value)}
                 placeholder={useFullDocument ? "Pregunta sobre todo el documento..." : "Pregunta algo..."}
-                className="w-full bg-transparent border-none px-3 py-3 text-white text-sm outline-none resize-none custom-scrollbar leading-relaxed"
-                style={{ height: '54px' }}
+                className="w-full bg-transparent border-none px-2 py-2 text-white text-sm outline-none resize-none custom-scrollbar leading-tight min-h-[40px] max-h-[120px]"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -5614,14 +6335,15 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                 }}
               />
               <button 
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={handleGeminiQuery}
                 disabled={isGeminiLoading || (!geminiQuery.trim() && geminiImages.length === 0)}
-                className="w-14 h-14 bg-[#8e44ad] hover:bg-[#9b59b6] disabled:opacity-30 disabled:hover:bg-[#8e44ad] rounded-xl transition-all shadow-lg flex items-center justify-center"
+                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${isGeminiLoading || (!geminiQuery.trim() && geminiImages.length === 0) ? 'text-white/20 bg-white/5' : 'bg-[#8e44ad] text-white shadow-lg'}`}
               >
                 {isGeminiLoading ? (
-                  <Loader2 size={26} className="animate-spin text-white" />
+                  <Loader2 size={18} className="animate-spin" />
                 ) : (
-                  <Send size={26} color="white" />
+                  <Send size={18} />
                 )}
               </button>
             </div>
@@ -6132,6 +6854,12 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                           <img src={asset.thumbnail} alt="asset" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : asset.type === 'text' ? (
                           <Type size={20} className="text-white/40" />
+                        ) : asset.type === 'schema' ? (
+                          <div className="w-full h-full bg-[#8e44ad]/80 flex items-center justify-center p-2">
+                            <span className="text-[8px] text-white font-bold text-center line-clamp-3 uppercase leading-tight">{asset.thumbnail}</span>
+                          </div>
+                        ) : asset.type === 'shape' ? (
+                          <Diamond size={20} className="text-[#FFD105]" />
                         ) : (
                           <Diamond size={20} className="text-white/40" />
                         )}
@@ -6353,6 +7081,7 @@ const LienzoDeApuntes: React.FC<LienzoDeApuntesProps> = ({ id, title, color, gra
                         onDeleteAsset={(id) => setLayoutAssets(prev => prev.filter(a => a.id !== id))}
                         textBoxes={textBoxes}
                         images={images}
+                        schemaNodes={schemaNodes}
                       />
                     </div>
                   ))}

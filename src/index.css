@@ -865,6 +865,10 @@ body {
   position: relative !important;
 }
 
+.lava-effect .absolute {
+  position: absolute !important;
+}
+
 .lava-effect .card-content {
   position: absolute !important;
   top: 0 !important;

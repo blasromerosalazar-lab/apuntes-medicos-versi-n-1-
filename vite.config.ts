@@ -13,13 +13,6 @@ export default defineConfig(({mode}) => {
       assetsDir: 'assets',
       emptyOutDir: true,
       sourcemap: false,
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            vendor: ['react', 'react-dom', 'motion/react'],
-          },
-        },
-      },
     },
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),

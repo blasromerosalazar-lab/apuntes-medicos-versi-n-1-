@@ -16,6 +16,7 @@ export default defineConfig(({mode}) => {
       strictPort: true,
       hmr: {
         // Redirección segura para el proxy de Google AI Studio
+        protocol: 'wss',
         clientPort: 443,
         path: 'vite-hmr'
       },

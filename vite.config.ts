@@ -8,17 +8,16 @@ export default defineConfig(({mode}) => {
   
   return {
     plugins: [react(), tailwindcss()],
-    // Base ./ es vital para que GitHub Pages cargue los assets correctamente
+    // Vital para GitHub Pages: rutas relativas
     base: './',
     server: {
       port: 3000,
       host: '0.0.0.0',
       strictPort: true,
       hmr: {
-        // Forzamos puerto 443 para el WebSocket de HMR en entornos cloud
-        clientPort: 443,
+        // Requerido para entornos de Google AI Studio / Cloud Run
         protocol: 'wss',
-        path: 'hmr/'
+        clientPort: 443,
       },
       allowedHosts: [
         '.us-west1.run.app',
@@ -26,7 +25,6 @@ export default defineConfig(({mode}) => {
       ]
     },
     define: {
-      // Pasamos la API KEY al cliente de forma segura
       'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY),
       'process.env': {}, 
     },
@@ -34,7 +32,6 @@ export default defineConfig(({mode}) => {
       outDir: 'dist',
       assetsDir: 'assets',
       emptyOutDir: true,
-      sourcemap: false,
       target: 'esnext',
     },
     resolve: {

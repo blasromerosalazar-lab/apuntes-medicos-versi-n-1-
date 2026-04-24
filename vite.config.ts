@@ -8,16 +8,17 @@ export default defineConfig(({mode}) => {
   
   return {
     plugins: [react(), tailwindcss()],
-    // Vital para GitHub Pages: rutas relativas
+    // Base ./ asegura rutas relativas para GitHub Pages
     base: './',
     server: {
       port: 3000,
-      host: '0.0.0.0',
+      host: true,
       strictPort: true,
       hmr: {
-        // Requerido para entornos de Google AI Studio / Cloud Run
+        // Forzamos conexión segura para el proxy de Google AI Studio
         protocol: 'wss',
         clientPort: 443,
+        path: 'vite-hmr'
       },
       allowedHosts: [
         '.us-west1.run.app',

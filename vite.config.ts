@@ -8,16 +8,17 @@ export default defineConfig(({mode}) => {
   
   return {
     plugins: [react(), tailwindcss()],
-    // Base ./ asegura rutas relativas para GitHub Pages
+    // Base relativa para GitHub Pages
     base: './',
     server: {
       port: 3000,
       host: true,
       strictPort: true,
       hmr: {
-        // Fix de red para el proxy de Google AI Studio
+        // Redirección segura para el proxy de Google AI Studio
         protocol: 'wss',
-        clientPort: 443
+        clientPort: 443,
+        path: 'vite-hmr'
       },
       watch: {
         // Vital para entornos de contenedores cloud

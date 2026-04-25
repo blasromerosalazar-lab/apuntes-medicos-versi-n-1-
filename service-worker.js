@@ -2,9 +2,7 @@ const CACHE_NAME = `mednotes-v${new Date().getTime()}`;
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './manifest.json',
-  './hand_model.glb',
-  './bioquimica_esquema.svg'
+  './manifest.json'
 ];
 
 // Instalación: Guarda todo en el búnker
@@ -18,6 +16,23 @@ self.addEventListener('install', (event) => {
     })
   );
   self.skipWaiting();
+});
+
+// Activación: Limpia memorias viejas para evitar el pantallazo blanco
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            console.log('Borrando cache viejo:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+  self.clients.claim();
 });
 
 // Estrategia Cache-First: Si está en la tablet, no lo busques en internet
